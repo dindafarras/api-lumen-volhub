@@ -135,7 +135,7 @@ class UserApiController extends Controller
         $userData = Redis::get($key);
 
         if (!$userData){
-            $user = User::find($userId);
+            $user = User::with('experiences', 'skills', 'pendaftars')->find($userId);
             if (!$user) {
                 return response()->json([
                     'message' => '"Nope, we couldn’t find that ID. It’s either gone or never existed 🙄"'
@@ -273,10 +273,10 @@ class UserApiController extends Controller
     }
 
     // Kelola pendaftaran
-    public function applyActivity(Request $request, $idUser, $idActivity) 
+    public function applyActivity(Request $request, $userId, $idActivity) 
     {
         try {
-            $user = User::find($idUser);
+            $user = User::find($userId);
             $activity = Kegiatan::find($idActivity);
 
             // Validasi apakah user dan kegiatan ditemukan
@@ -290,6 +290,20 @@ class UserApiController extends Controller
                 return response()->json([
                     'message' => 'Kegiatan tidak ditemukan.',
                 ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'motivasi' => 'required|max:255',
+            ], [
+                'motivasi.required' => 'Motivasi wajib diisi.',
+                'motivasi.max' => 'Motivasi tidak boleh lebih dari 255 karakter'              
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'message' => 'Validasi gagal',
+                    'errors' => $validator->errors()
+                ], 400);
             }
 
             $apply = new Pendaftar;
@@ -322,8 +336,10 @@ class UserApiController extends Controller
 
             $apply->save();
 
+            Redis::del("mitra:pendaftar");// MASIH BINGUNG YANG INI
+
             return response()->json([
-                'message' => 'Penfataran behasil dilakukan',
+                'message' => 'Pendaftaran behasil dilakukan',
                 'data'=>$apply,
             ], 200);
         } catch (\Exception $e) {
@@ -335,17 +351,32 @@ class UserApiController extends Controller
     }
 
     // Kelola Skill
-    public function addSkill(Request $request, $idUser) 
+    public function addSkill(Request $request, $userId) 
     {
         try {
-            $user = User::find($idUser);
+            $user = User::find($userId);
 
             if (!$user) {
                 return response()->json(['message' => 'User tidak ditemukan'], 404);
             }
+
+            $validator = Validator::make($request->all(), [
+                'nama_skill' => 'max:30',
+            ], [
+                'nama_skill.max' => 'Skill tidak boleh lebih dari 30 karakter'              
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'message' => 'Validasi gagal',
+                    'errors' => $validator->errors()
+                ], 400);
+            }
             
             $skill = Skill::firstOrCreate(['nama_skill' => $request->input('nama_skill')]);
             $user->skills()->attach($skill->id_skill);
+
+            Redis::del("user:profile:{$userId}");
 
             return response()->json([
                 'message' => 'Berhasil menambahkan skill',
@@ -360,10 +391,10 @@ class UserApiController extends Controller
         }
     }
 
-    public function deleteSkill($idUser, $idSkill) 
+    public function deleteSkill($userId, $idSkill) 
     {
         try {
-            $user = User::find($idUser);
+            $user = User::find($userId);
             if (!$user) {
                 return response()->json(['message' => 'User tidak ditemukan'], 404);
             }
@@ -386,6 +417,8 @@ class UserApiController extends Controller
             }
 
             $skill->delete();
+            
+            Redis::del("user:profile:{$userId}");
 
             return response()->json([
                 'message' => 'Skill berhasil dihapus'
@@ -400,13 +433,42 @@ class UserApiController extends Controller
     }
 
     // Kelola Experience
-    public function addExperience(Request $request, $idUser) 
+    public function addExperience(Request $request, $userId) 
     {
         try {
-            $user = User::find($idUser);
+            $user = User::find($userId);
 
             if (!$user) {
                 return response()->json(['message' => 'User tidak ditemukan'], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'judul_kegiatan' => 'required|max:30',
+                'lokasi_kegiatan' => 'required|max:30',
+                'tgl_mulai' => 'required|date',
+                'tgl_selesai' => 'required|date',
+                'deskripsi' => 'required|max:255',
+                'mitra' => 'required|max:50',
+            ], [
+                'judul_kegiatan.required' => 'Nama kegiatan wajib diisi',
+                'judul_kegiatan.max' => 'Nama kegiatan tidak boleh lebih dari 30 karakter',
+                'lokasi_kegiatan.required' => 'Lokasi kegiatan wajib diisi',
+                'lokasi_kegiatan.max' => 'Lokasi kegiatan tidak boleh lebih dari 30 karakter',
+                'tgl_mulai.required' => 'Tanggal mulai kegiatan wajib diisi',
+                'tgl_mulai.max' => 'Tanggal mulai kegiatan diisi dengan format YYYY-MM-DD',
+                'tgl_selesai.required' => 'Tanggal selesai kegiatan wajib diisi',
+                'tgl_selesai.max' => 'Tanggal selesai kegiatan diisi dengan format YYYY-MM-DD',
+                'deskripsi.required' => 'Deskripsi kegiatan wajib diisi',
+                'deskripsi.max' => 'Deskripsi kegiatan tidak boleh lebih dari 255 karakter',
+                'mitra.required' => 'Mitra kegiatan wajib diisi',
+                'mitra.max' => 'Mitra kegiatan tidak boleh lebih dari 50 karakter',             
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'message' => 'Validasi gagal',
+                    'errors' => $validator->errors()
+                ], 400);
             }
 
             $experience = new Experience;
@@ -419,6 +481,8 @@ class UserApiController extends Controller
             $experience->mitra = $request->mitra;
 
             $experience->save();
+
+            Redis::del("user:profile:{$userId}");
 
             return response()->json([
                 'message' => 'Experience berhasil ditambahkan',
@@ -433,10 +497,10 @@ class UserApiController extends Controller
         }
     }
 
-    public function deleteExperience($idUser, $idExperience) 
+    public function deleteExperience($userId, $idExperience) 
     {
         try {
-            $user = User::find($idUser);
+            $user = User::find($userId);
 
             if (!$user) {
                 return response()->json(['message' => 'User tidak ditemukan'], 404);
@@ -451,6 +515,8 @@ class UserApiController extends Controller
             }
 
             $experience->delete();
+
+            Redis::del("user:profile:{$userId}");
 
             return response()->json([
                 'message' => 'Experience berhasil dihapus'

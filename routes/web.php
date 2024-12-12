@@ -19,15 +19,15 @@ $router->group([
         $router->put('editProfile/{userId}', 'UserApiController@editProfile');
 
         // Melakukan pendaftaran
-        $router->post('apply/{idUser}/{idActivity}', 'UserApiController@applyActivity');
+        $router->post('apply/{userId}/{idActivity}', 'UserApiController@applyActivity');
     
         // Kelola Skill
-        $router->post('addSkill/{idUser}', 'UserApiController@addSkill');
-        $router->delete('deleteSkill/{idUser}/{idSkill}', 'UserApiController@deleteSkill');
+        $router->post('addSkill/{userId}', 'UserApiController@addSkill');
+        $router->delete('deleteSkill/{userId}/{idSkill}', 'UserApiController@deleteSkill');
 
         // Kelola Experience
-        $router->post('addExperience/{idUser}', 'UserApiController@addExperience');
-        $router->delete('deleteExperience/{idUser}/{idExperience}', 'UserApiController@deleteExperience');
+        $router->post('addExperience/{userId}', 'UserApiController@addExperience');
+        $router->delete('deleteExperience/{userId}/{idExperience}', 'UserApiController@deleteExperience');
 
     });
 });
