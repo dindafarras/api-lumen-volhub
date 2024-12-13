@@ -19,13 +19,16 @@ use Carbon\Carbon;
 
 use Illuminate\Support\Facades\Validator;
 
+use Illuminate\Support\Facades\Redis;
+
 use Tymon\JWTAuth\Facades\JWTAuth;
 use Tymon\JWTAuth\Exceptions\JWTException;
 
 
 class EmployerApiController extends Controller
 {
-    public function login(Request $request) {
+    public function login(Request $request) 
+    {
         $validator = Validator::make($request->all(), [
             'username' => 'required',
             'password' => 'required',
@@ -42,25 +45,66 @@ class EmployerApiController extends Controller
                 return response()->json(['message' => 'Login gagal, username atau password salah'], 401);
             }
         } catch (JWTException $e) {
-            return response()->json(['message' => 'Gagal membuat token'], 500);
+            return response()->json([
+                'message' => 'Gagal membuat token',
+                'error' => $e->getMessage(),
+            ], 500);
         }
 
         return response()->json([
             'message' => 'Login berhasil',
             'token' => $token,
-            'user' => auth('employer')->user(),
         ], 200);
     }
 
-    public function registrasi(Request $request) {
+    public function registrasi(Request $request) 
+    {
         try {
+            // Validasi input
+            $validator = Validator::make($request->all(), [
+                'nama_mitra' => 'required|max:50',
+                'username' => 'required|max:50',
+                'email_mitra' => 'required|email',
+                'password' => [
+                    'required',
+                    'min:8',
+                    'max:255',
+                    'regex:/[A-Z]/',    
+                    'regex:/[0-9]/',    
+                    'regex:/[\W_]/',    
+                ],
+                'nomor_telephone' => [
+                    'required',
+                    'regex:/^[0-9]{10,15}$/',
+                ]
+            ], [
+                'nama_mitra.required' => 'Nama Perusahaan wajib diisi',
+                'nama_mitra.max' => 'Nama Perusahaan tidak boleh lebih dari 50 karakter',
+                'username.required' => 'Username wajib diisi',
+                'username.max' => 'Username tidak boleh lebih dari 50 karakter',
+                'email_mitra.required' => 'Email peruhasaan wajib diisi',
+                'email_mitra.email' => 'Format email tidak valid',
+                'password.required' => 'Password wajib diisi',
+                'password.min' => 'Password harus memiliki minimal 8 karakter.',
+                'password.max' => 'Password tidak boleh lebih dari 255 karakter.',
+                'password.regex' => 'Password harus mengandung setidaknya satu huruf kapital, satu angka, dan satu simbol.',
+                'nomor_telephone.required' => 'Nomor telephone wajib diisi',
+                'nomor_telephone.regex' => 'Nomor telephone harus berupa angka dan memiliki panjang 10-15 digit'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors(),
+                ], 422);
+            }
+
             $registrasi = new Mitra;
             $registrasi->nama_mitra = $request->nama_mitra;
             $registrasi->username = $request->username;
             $registrasi->email_mitra = $request->email_mitra;
-            $registrasi->password = $request->password;
+            $registrasi->password = Hash::make($request->password);
             $registrasi->nomor_telephone = $request->nomor_telephone;
-            $registrasi->save();
 
             $existing_username = User::where('username', $request->username)->first();
             if ($existing_username) {
@@ -72,6 +116,8 @@ class EmployerApiController extends Controller
             }
 
             $registrasi-> save();
+            
+            Redis::del('mitra:all');
 
             return response()->json([
                 'message' => 'Registrasi Berhasil',
@@ -86,22 +132,98 @@ class EmployerApiController extends Controller
     }
 
     // Kelola Profile
-    public function profile($idEmployer) {
-        $employer = Mitra::find($idEmployer);
-        return response()->json([
-            'success' => true,
-            'data' => $employer,
-        ], 200);
+    public function profile() 
+    {
+        $employerId = auth('employer')->id();
+        
+        $key = "employer:profile:{$employerId}";
+        $employerData = Redis::get($key);
+
+        if (!$employerData) {
+            $employer = Mitra::find($employerId);
+            if (!$employer) {
+                return response()->json([
+                    'message' => '"Nope, we couldn’t find that ID. It’s either gone or never existed 🙄"'
+                ], 404);
+            }
+
+            Redis::setex($key, 3600, json_encode($employer));
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Data employer berhasil diambil dari database',
+                'data' => $employer
+            ]);
+        } else {
+            $employer = json_decode($employerData, true);
+            return response()->json([
+                'message' => 'Data employer masih ada di Redis',
+                'data' => $employer,
+            ], 200);
+        }
     }
 
-    public function editProfile(Request $request, $idEmployer) {
+    public function editProfile(Request $request, $employerId) 
+    {
         try {
-            $employer = Mitra::find($idEmployer);
+            $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json(['message' => 'Mitra tidak ditemukan'], 404);
             }
 
+            $validator = Validator::make($request->all(), [
+                'username' => 'nullable|max:50',
+                'password' => 'nullable|min:8|max:255|regex:/[A-Z]/|regex:/[0-9]/|regex:/[\W_]/',
+                'email_mitra' => 'nullable|email',
+                'nama_mitra' => 'nullable|max:50',
+                'bio' => 'nullable|max:50',
+                'industri' => 'nullable|max:30',
+                'ukuran_perusahaan' => 'nullable|regex:/^[0-9]+$/',
+                'situs' => 'nullable',
+                'deskripsi' => 'nullable|max:255',
+                'alamat' => 'nullable|max:255',
+                'nomor_telephone' => 'nullable|regex:/^[0-9]{10,15}$/',
+                'gambar' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+                'logo' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+            ], [
+                'username.max' => 'Username tidak boleh lebih dari 50 karakter',
+                'password.min' => 'Password harus memiliki minimal 8 karakter.',
+                'password.max' => 'Password tidak boleh lebih dari 255 karakter.',
+                'password.regex' => 'Password harus mengandung setidaknya satu huruf kapital, satu angka, dan satu simbol.',
+                'email_mitra.email' => 'Format email tidak valid',
+                'nama_mitra.max' => 'Nama mitra tidak boleh lebih dari 50 karakter',
+                'bio.max' => 'Bio tidak boleh lebih dari 50 karakter',
+                'industri.max' => 'Industri tidak boleh lebih dari 50 karakter',
+                'ukuran_perusahaan.regex' => 'Ukuran perusahaan harus berupa angka',
+                'deskripsi.max' => 'Deskripsi tidak boleh lebih dari 255 karakter',
+                'alamat.max' => 'Alamat tidak boleh lebih dari 255 karakter',
+                'nomor_telephone.regex' => 'Nomor telephone harus berupa angka dan memiliki panjang 10-15 digit',
+                'gambar.image' => 'Gambar harus berupa gambar.',
+                'gambar.mimes' => 'Gambar harus berupa file JPG, JPEG, atau PNG.',
+                'gambar.max' => 'Ukuran gambar tidak boleh lebih dari 2MB.', 
+                'logo.image' => 'Logo harus berupa gambar.',
+                'logo.mimes' => 'Logo harus berupa file JPG, JPEG, atau PNG.',
+                'logo.max' => 'Ukuran logo tidak boleh lebih dari 2MB.'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'message' => 'Validasi gagal',
+                    'errors' => $validator->errors()
+                ], 400);
+            }
+
             $employer->username = $request->username ?? $employer->username;
+
+            $existing_username = User::where('username', $request->username)->first();
+            if ($existing_username) {
+                // Jika username sudah digunakan, return dengan pesan error
+                return response()->json([
+                    'message' => 'Username sudah digunakan',
+                    'status' => 'error'
+                ], 400); // Menggunakan status kode 400 untuk menandakan adanya kesalahan validasi
+            }
+
             $employer->nama_mitra = $request->nama_mitra ?? $employer->nama_mitra;
             $employer->email_mitra = $request->email_mitra ?? $employer->email_mitra;
             $employer->bio = $request->bio ?? $employer->bio;
@@ -129,6 +251,8 @@ class EmployerApiController extends Controller
 
             $employer->save();
 
+            Redis::del("employer:all", "employer:profile:{$employerId}");
+
             return response()->json([
                 'success' => true,
                 'data' => $employer,
@@ -143,30 +267,77 @@ class EmployerApiController extends Controller
     }
 
     // Kelola Activity
-    public function activities($idEmployer) {
-        $employer = Mitra::find($idEmployer);
+    public function activities($employerId) 
+    {
+        $key = "employer:activities:{$employerId}";
+        $employerActivitiesData = Redis::get($key);
 
-        $activities = Kegiatan::where('id_mitra', $employer->id_mitra)->get();
+        if(!$employerActivitiesData) {
+            $employer = Mitra::find($employerId);
 
-        return response()->json([
-            'message' => 'Berhasil mengambil seluruh kegiatan pada mitra ini',
-            'data' => $activities
-        ], 200);
+            if (!$employer) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Nope, we couldn’t find that ID. It’s either gone or never existed 🙄',
+                ], 404);
+            }
+
+            $activities = Kegiatan::where('id_mitra', $employer->id_mitra)->get();
+
+            Redis::setex("$key", 3600, json_encode($activities));
+            return response()->json([
+                'success' => true,
+                'message' => 'Berhasil mengambil seluruh kegiatan pada mitra ini',
+                'data' => $activities
+            ], 200);
+        } else {
+            $activities = json_decode($employerActivitiesData);
+            return response()->json([
+                'success' => true,
+                'message' => 'Data berhasil diambil dari redis',
+                'data' => $activities
+            ]);
+        }
     }
 
-    public function detailActivity($idEmployer, $idActivity) {
-        $employer = Mitra::find($idEmployer);
+    public function detailActivity($employerId, $activityId) 
+    {
+        $key = "detail:acitivity:{$employerId}:{$activityId}";
+        $detailActivitiData = Redis::get($key);
 
-        $activity = Kegiatan::with('benefits', 'kriterias')
-                                ->where('id_mitra', $employer->id_mitra)->find($idActivity);
+        if(!$detailActivitiData) 
+        {
+            $employer = Mitra::find($employerId);
 
-        return response()->json([
-            'message' => 'Berhasil mengambil detail kegiatan',
-            'data' => $activity
-        ], 200);
+            if (!$employer) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Nope, we couldn’t find that ID. It’s either gone or never existed 🙄',
+                ], 404);
+            }
+
+            $activity = Kegiatan::with('benefits', 'kriterias')
+                                    ->where('id_mitra', $employer->id_mitra)->find($activityId);
+
+            Redis::setex("$key", 3600, json_encode($activity));
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Berhasil mengambil detail kegiatan',
+                'data' => $activity
+            ], 200);
+        } else {
+            $activity = json_decode($detailActivitiData);
+            return response()->json([
+                'success' => true,
+                'message' => 'Data berhasil diambil dari redis',
+                'data' => $activity
+            ]);
+        }
     }
 
-    public function addActivity(Request $request, $idEmployer) {
+    public function addActivity(Request $request, $idEmployer) 
+    {
         try{
             $employer = Mitra::find($idEmployer);
             if (!$employer) {

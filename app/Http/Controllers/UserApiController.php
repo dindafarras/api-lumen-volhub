@@ -59,8 +59,8 @@ class UserApiController extends Controller
         try {   
             // Validasi input
             $validator = Validator::make($request->all(), [
-                'nama_user' => 'required',
-                'username' => 'required|max:255',
+                'nama_user' => 'required|max:50',
+                'username' => 'required|max:50',
                 'email_user' => 'required|email',
                 'password' => [
                     'required',
@@ -76,7 +76,9 @@ class UserApiController extends Controller
                 ]
             ], [
                 'nama_user.required' => 'Nama User wajib diisi.',
+                'nama_user.max' => 'Nama User tidak boleh lebih dari 50 karakter.',
                 'username.required' => 'Username wajib diisi.',
+                'username.max' => 'Username tidak boleh lebih dari 50 karakter.',
                 'email_user.required' => 'Email user wajib diisi.',
                 'email_user.email' => 'Format email tidak valid.',
                 'password.required' => 'Password wajib diisi',
@@ -171,9 +173,9 @@ class UserApiController extends Controller
             }
 
             $validator = Validator::make($request->all(), [
-                'username' => 'nullable|max:255',
+                'username' => 'nullable|max:50',
                 'email_user' => 'nullable|email',
-                'nama_user' => 'nullable',
+                'nama_user' => 'nullable|max:50',
                 'nomor_telephone' => 'nullable|regex:/^[0-9]{10,15}$/',
                 'pendidikan_terakhir' => 'nullable|in:SD,SMP,SMA/SMK,Diploma (D1 - D4),Sarjana (S1),Magister (S2),Doktor (S3)',
                 'gender' => 'nullable|in:Laki-laki,Perempuan',
@@ -187,8 +189,9 @@ class UserApiController extends Controller
                 'cv' => 'nullable|file|mimes:pdf|max:2048',
                 'foto_profile' => 'nullable|image|mimes:jpg,jpeg,png|max:2048'
             ], [
-                'username.max' => 'Username tidak boleh lebih dari 255 karakter.',
+                'username.max' => 'Username tidak boleh lebih dari 50 karakter.',
                 'email_user.email' => 'Format email tidak valid.',
+                'nama_user.max' => 'Nama user tidak boleh lebih dari 50 karakter',
                 'nomor_telephone.required' => 'Nomor telephone wajib diisi.',
                 'nomor_telephone.regex' => 'Nomor telephone harus berupa angka dan memiliki panjang 10-15 digit.',
                 'pendidikan_terakhir.in' => 'Pendidikan terakhir tidak valid.',

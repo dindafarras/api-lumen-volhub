@@ -75,30 +75,30 @@ $router->group([
         'middleware' => 'jwt.auth',
     ], function () use ($router) {
         // Profile Employer
-        $router->get('profile/{idEmployer}', 'EmployerApiController@profile');
-        $router->put('editProfile/{idEmployer}', 'EmployerApiController@editProfile');
+        $router->get('profile', 'EmployerApiController@profile');
+        $router->put('editProfile/{employerId}', 'EmployerApiController@editProfile');
 
         // Kelola Activity
-        $router->get('activities/{idEmployer}', 'EmployerApiController@activities');
-        $router->get('detailActivity/{idEmployer}/{idActivity}', 'EmployerApiController@detailActivity');
-        $router->post('addActivity/{idEmployer}', 'EmployerApiController@addActivity');
-        $router->put('editActivity/{idEmployer}/{idActivity}', 'EmployerApiController@editActivity');
-        $router->delete('deleteActivity/{idEmployer}/{idActivity}', 'EmployerApiController@deleteActivity');
+        $router->get('activities/{employerId}', 'EmployerApiController@activities');
+        $router->get('detailActivity/{employerId}/{activityId}', 'EmployerApiController@detailActivity');
+        $router->post('addActivity/{employerId}', 'EmployerApiController@addActivity');
+        $router->put('editActivity/{employerId}/{activityId}', 'EmployerApiController@editActivity');
+        $router->delete('deleteActivity/{employerId}/{activityId}', 'EmployerApiController@deleteActivity');
 
         // Kelola Benefit
-        $router->post('addBenefit/{idEmployer}/{idActivity}', 'EmployerApiController@addBenefit');
-        $router->delete('deleteBenefit/{idEmployer}/{idActivity}/{idBenefit}', 'EmployerApiController@deleteBenefit');
+        $router->post('addBenefit/{employerId}/{activityId}', 'EmployerApiController@addBenefit');
+        $router->delete('deleteBenefit/{employerId}/{activityId}/{idBenefit}', 'EmployerApiController@deleteBenefit');
 
         // Kelola Requirement
-        $router->post('addRequirement/{idEmployer}/{idActivity}', 'EmployerApiController@addRequirement');
-        $router->delete('deleteRequirement/{idEmployer}/{idActivity}/{idRequirement}', 'EmployerApiController@deleteRequirement');
+        $router->post('addRequirement/{employerId}/{activityId}', 'EmployerApiController@addRequirement');
+        $router->delete('deleteRequirement/{employerId}/{activityId}/{idRequirement}', 'EmployerApiController@deleteRequirement');
 
         // Kelola Pendaftar
-        $router->get('applicants/{idEmployer}', 'EmployerApiController@applicants');
-        $router->get('detailApplicant/{idEmployer}/{idApplicant}', 'EmployerApiController@detailApplicant');
+        $router->get('applicants/{employerId}', 'EmployerApiController@applicants');
+        $router->get('detailApplicant/{employerId}/{idApplicant}', 'EmployerApiController@detailApplicant');
 
-        $router->put('updateApplicant/{idEmployer}/{idApplicant}/{idActivity}', 'EmployerApiController@updateApplicant');
-        $router->put('updateInterview/{idEmployer}/{idApplicant}/{idActivity}', 'EmployerApiController@updateInterview');
+        $router->put('updateApplicant/{employerId}/{idApplicant}/{activityId}', 'EmployerApiController@updateApplicant');
+        $router->put('updateInterview/{employerId}/{idApplicant}/{activityId}', 'EmployerApiController@updateInterview');
     });
 });
 

@@ -180,11 +180,6 @@ class AdminApiController extends Controller
                 'data' => $category
             ]);
         }
-
-        return response()->json ([
-            'success' => true,
-            'data' => $category
-        ], 200);
     }
 
     public function addCategory (Request $request) 
