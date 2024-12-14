@@ -458,9 +458,9 @@ class UserApiController extends Controller
                 'lokasi_kegiatan.required' => 'Lokasi kegiatan wajib diisi',
                 'lokasi_kegiatan.max' => 'Lokasi kegiatan tidak boleh lebih dari 30 karakter',
                 'tgl_mulai.required' => 'Tanggal mulai kegiatan wajib diisi',
-                'tgl_mulai.max' => 'Tanggal mulai kegiatan diisi dengan format YYYY-MM-DD',
+                'tgl_mulai.date' => 'Tanggal mulai kegiatan diisi dengan format YYYY-MM-DD',
                 'tgl_selesai.required' => 'Tanggal selesai kegiatan wajib diisi',
-                'tgl_selesai.max' => 'Tanggal selesai kegiatan diisi dengan format YYYY-MM-DD',
+                'tgl_selesai.date' => 'Tanggal selesai kegiatan diisi dengan format YYYY-MM-DD',
                 'deskripsi.required' => 'Deskripsi kegiatan wajib diisi',
                 'deskripsi.max' => 'Deskripsi kegiatan tidak boleh lebih dari 255 karakter',
                 'mitra.required' => 'Mitra kegiatan wajib diisi',
@@ -550,5 +550,63 @@ class UserApiController extends Controller
 
         // Simpan nama file baru ke user
         $user->$attribute = $fileName;
+    }
+
+    public function activities() 
+    {
+        $key = "all:activities";
+        $allActivitiesData = Redis::get($key);
+
+        if (!$allActivitiesData) {
+            $activities = Kegiatan::select('nama_kegiatan', 'sistem_kegiatan', 'tgl_penutupan', 'deskripsi')->get();
+
+            if (!$activities) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tidak ada kegiatan',
+                ], 404);
+            }
+
+            Redis::setex("$key", 3600, json_encode($activities));
+            return response()->json([
+                'success' => true,
+                'message' => 'Berhasil mengambil seluruh kegiatan',
+                'data' => $activities
+            ], 200);
+        } else {
+            $activities = json_decode($allActivitiesData);
+            return response()->json([
+                'success' => true,
+                'message' => 'Data berhasil diambil dari redis',
+                'data' => $activities
+            ]);
+        }
+    }
+
+    public function detailActivity($activityId) 
+    {
+        $key = "detail:acitivity:{$activityId}";
+        $detailActivitiData = Redis::get($key);
+
+        if(!$detailActivitiData) 
+        {
+            $activity = Kegiatan::with('benefits', 'kriterias')
+                                    ->find($activityId);
+
+            Redis::setex("$key", 3600, json_encode($activity));
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Berhasil mengambil detail kegiatan',
+                'data' => $activity
+            ], 200);
+        } else {
+            $activity = json_decode($detailActivitiData);
+            return response()->json([
+                'success' => true,
+                'message' => 'Data berhasil diambil dari redis',
+                'data' => $activity
+            ]);
+        }
     }
 }

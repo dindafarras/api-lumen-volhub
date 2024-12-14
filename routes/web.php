@@ -1,6 +1,5 @@
 <?php
 
-use Illuminate\Support\Facades\Redis;
 
 $router->group([
     'prefix' => 'user',
@@ -10,6 +9,10 @@ $router->group([
 
     //Registrasi User
     $router->post('registrasi', 'UserApiController@registrasiUser');
+
+    //Activities
+    $router->get('activities', 'UserApiController@activities');
+    $router->get('detailActivity/{activityId}', 'UserApiController@detailActivity');
 
     $router->group([
         'middleware' => 'jwt.auth',
@@ -95,23 +98,9 @@ $router->group([
 
         // Kelola Pendaftar
         $router->get('applicants/{employerId}', 'EmployerApiController@applicants');
-        $router->get('detailApplicant/{employerId}/{idApplicant}', 'EmployerApiController@detailApplicant');
+        $router->get('detailApplicant/{employerId}/{userId}', 'EmployerApiController@detailApplicant');
 
-        $router->put('updateApplicant/{employerId}/{idApplicant}/{activityId}', 'EmployerApiController@updateApplicant');
-        $router->put('updateInterview/{employerId}/{idApplicant}/{activityId}', 'EmployerApiController@updateInterview');
+        $router->put('updateApplicant/{employerId}/{userId}/{activityId}', 'EmployerApiController@updateApplicant');
+        $router->put('updateInterview/{employerId}/{userId}/{activityId}', 'EmployerApiController@updateInterview');
     });
-});
-
-$router->get('/redis-test', function () {
-    // Menyimpan data ke Redis
-    Redis::set('test_key', 'Hello from Redis!');
-    
-    // Mengambil data dari Redis
-    $value = Redis::get('test_key');
-
-    return response()->json([
-        'status' => 'success',
-        'message' => 'Redis connection works!',
-        'data' => $value,
-    ]);
 });

@@ -282,7 +282,9 @@ class EmployerApiController extends Controller
                 ], 404);
             }
 
-            $activities = Kegiatan::where('id_mitra', $employer->id_mitra)->get();
+            $activities = Kegiatan::where('id_mitra', $employer->id_mitra)
+                                        ->select('nama_kegiatan', 'sistem_kegiatan', 'tgl_penutupan', 'deskripsi')
+                                        ->get();
 
             Redis::setex("$key", 3600, json_encode($activities));
             return response()->json([
@@ -302,7 +304,7 @@ class EmployerApiController extends Controller
 
     public function detailActivity($employerId, $activityId) 
     {
-        $key = "detail:acitivity:{$employerId}:{$activityId}";
+        $key = "detail:activity:{$employerId}:{$activityId}";
         $detailActivitiData = Redis::get($key);
 
         if(!$detailActivitiData) 
@@ -336,28 +338,56 @@ class EmployerApiController extends Controller
         }
     }
 
-    public function addActivity(Request $request, $idEmployer) 
+    public function addActivity(Request $request, $employerId) 
     {
         try{
-            $employer = Mitra::find($idEmployer);
+            $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json([
                     'message' => 'Employer tidak ditemukan.'
                 ], 404);
             }
 
-            $kategori = Kategori::find($request->id_kategori);
-            if (!$kategori) {
+            $category = Kategori::find($request->id_kategori);
+            if (!$category) {
                 return response()->json([
                     'message' => 'Kategori tidak ditemukan.'
                 ], 404);
             }
 
-            // Upload file gambar
-            $gambar = $request->file('gambar');
-            $extension = $gambar->getClientOriginalExtension();
-            $newName = $request->nama_kegiatan . '-' . Date::now()->timestamp . '.' . $extension;
-            $gambarPath = $gambar->storeAs('gambar', $newName, 'public');
+            $validator = Validator::make($request->all(), [
+                'id_kategori' => 'required',
+                'lokasi_kegiatan' => 'required|max:50',
+                'nama_kegiatan' => 'required|max:50',
+                'lama_kegiatan' => 'required|max:50',
+                'sistem_kegiatan' => 'required|in:Online,Offline',
+                'deskripsi' => 'required|max:255',
+                'tgl_penutupan' => 'required|date',
+                'tgl_kegiatan' => 'required|date',
+            ], [
+                'id_kategori.required' => 'Kategori wajib diisi',
+                'lokasi_kegiatan.required' => 'Lokasi kegiatan wajib diisi',
+                'lokasi_kegiatan.max' => 'Lokasi kegiatan tidak boleh lebih dari 50 karakter',
+                'nama_kegiatan.required' => 'Nama Kegiatan wajib diisi.',
+                'nama_kegiatan.max' => 'Nama Kegiatan tidak boleh lebih dari 50 karakter',
+                'lama_kegiatan.required' => 'Lama kegiatan wajib diisi',
+                'lama_kegiatan.max' => 'Lama kegiatan tidak boleh lebih dari 50 karakter',
+                'sistem_kegiatan.required' => 'Sistem Kegiatan wajib diisi',
+                'sistem_kegiatan.in' => 'Sistem Kegiatan harus diisi Online atau Offline',
+                'deskripsi.required' => 'Deskripsi kegiatan wajib diisi',
+                'deskripsi.max' => 'Deskripsi kegiatan tidak oleh lebih dari 255 karakter',
+                'tgl_penutupan.required' => 'Tanggal penutupan wajib diisi',
+                'tgl_penutupan.date' => 'Tanggal penutupan diisi dengan format YYYY-MM-DD',
+                'tgl_kegiatan.required' => 'Tanggal kegiatan wajib diisi',
+                'tgl_kegiatan.date' => 'Tanggal kegiatan diisi dengan format YYYY-MM-DD'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'message' => 'Validasi gagal',
+                    'errors' => $validator->errors()
+                ], 400);
+            }
             
             $activity = new Kegiatan;
             $activity->id_mitra = $employer->id_mitra;
@@ -369,9 +399,10 @@ class EmployerApiController extends Controller
             $activity->deskripsi = $request->deskripsi;
             $activity->tgl_penutupan = $request->tgl_penutupan;
             $activity->tgl_kegiatan = $request->tgl_kegiatan;
-            $activity->gambar = $gambarPath;
 
             $activity->save();
+
+            Redis::del("employer:activities:{$employerId}", "all:activities");
 
             return response()->json([
                 'message' => 'Kegiatan berhasil ditambahkan',
@@ -385,27 +416,54 @@ class EmployerApiController extends Controller
         }
     }
 
-    public function editActivity(Request $request, $idEmployer, $idActivity) {
+    public function editActivity(Request $request, $employerId, $activityId) 
+    {
         try{
-            $employer = Mitra::find($idEmployer);
+            $employer = Mitra::find($employerId);
             if (!$employer) {
                     return response()->json([
                         'message' => 'Employer tidak ditemukan.'
                     ], 404);
             }
 
-            $activity = Kegiatan::find($idActivity);
+            $activity = Kegiatan::find($activityId);
             if (!$activity) {
                 return response()->json([
                     'message' => 'Kegiatan tidak ditemukan.'
                 ], 404);
             }
 
-            $kategori = Kategori::find($request->id_kategori);
-            if (!$kategori) {
+            $category = Kategori::find($request->id_kategori);
+            if (!$category) {
                 return response()->json([
                     'message' => 'Kategori tidak ditemukan.'
                 ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'id_kategori' => 'nullable',
+                'lokasi_kegiatan' => 'nullable|max:50',
+                'nama_kegiatan' => 'nullable|max:50',
+                'lama_kegiatan' => 'nullable|max:50',
+                'sistem_kegiatan' => 'nullable|in:Online,Offline',
+                'deskripsi' => 'nullable|max:255',
+                'tgl_penutupan' => 'nullable|date',
+                'tgl_kegiatan' => 'nullable|date',
+            ], [
+                'lokasi_kegiatan.max' => 'Lokasi kegiatan tidak boleh lebih dari 50 karakter',
+                'nama_kegiatan.max' => 'Nama Kegiatan tidak boleh lebih dari 50 karakter',
+                'lama_kegiatan.max' => 'Lama kegiatan tidak boleh lebih dari 50 karakter',
+                'sistem_kegiatan.in' => 'Sistem Kegiatan harus diisi Online atau Offline',
+                'deskripsi.max' => 'Deskripsi kegiatan tidak oleh lebih dari 255 karakter',
+                'tgl_penutupan.date' => 'Tanggal penutupan diisi dengan format YYYY-MM-DD',
+                'tgl_kegiatan.date' => 'Tanggal kegiatan diisi dengan format YYYY-MM-DD'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'message' => 'Validasi gagal',
+                    'errors' => $validator->errors()
+                ], 400);
             }
 
             $activity->id_mitra = $employer->id_mitra;
@@ -417,12 +475,10 @@ class EmployerApiController extends Controller
             $activity->deskripsi = $request->deskripsi ?? $activity->deskripsi;
             $activity->tgl_penutupan = $request->tgl_penutupan ?? $activity->tgl_penutupan;
             $activity->tgl_kegiatan = $request->tgl_kegiatan ?? $activity->tgl_kegiatan;
-            // Handle file upload jika ada file gambar
-            if ($request->hasFile('gambar')) {
-                $this->handleFileUpload($request->file('gambar'), 'kegiatan', $activity, 'gambar');
-            }
 
             $activity->save();
+
+            Redis::del("employer:activities:{$employerId}", "detail:activity:{$employerId}:{$activityId}", "all:activities", "detail:acitivity:{$activityId}");
 
             return response()->json([
                 'message' => 'Kegiatan berhasil diperbarui',
@@ -436,171 +492,92 @@ class EmployerApiController extends Controller
         }
     }
 
-    public function deleteActivity($idEmployer, $idActivity) {
-        $employer = Mitra::find($idEmployer);
-        if (!$employer) {
-            return response()->json([
-                'message' => 'Employer tidak ditemukan.'
-            ], 404);
-        }
+    public function deleteActivity($employerId, $activityId) 
+    {
+        try {
+            $employer = Mitra::find($employerId);
+            if (!$employer) {
+                return response()->json([
+                    'message' => 'Employer tidak ditemukan.'
+                ], 404);
+            }
 
-        $activity = Kegiatan::where('id_mitra', $employer->id_mitra)->find($idActivity);
-        if (!$activity) {
-            return response()->json([
-                'message' => 'Kegiatan tidak ditemukan.'
-            ], 404);
-        }
-        
-        $activity->delete();
+            $activity = Kegiatan::where('id_mitra', $employer->id_mitra)->find($activityId);
+            if (!$activity) {
+                return response()->json([
+                    'message' => 'Kegiatan tidak ditemukan.'
+                ], 404);
+            }
+            
+            $activity->delete();
 
-        return response()->json([
-            'message' => 'Kegiatan berhasil dihapus'
-        ], 200);
+            Redis::del("employer:activities:{$employerId}", "all:activities");
+
+            return response()->json([
+                'message' => 'Kegiatan berhasil dihapus'
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Gagal menghapus Kegiatan',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     // Kelola Benefit
-    public function addBenefit(Request $request, $idEmployer, $idActivity){
-        $employer = Mitra::find($idEmployer);
-        if (!$employer) {
+    public function addBenefit(Request $request, $employerId, $activityId)
+    {
+        try {
+            $employer = Mitra::find($employerId);
+            if (!$employer) {
+                return response()->json([
+                    'message' => 'Employer tidak ditemukan.'
+                ], 404);
+            }
+
+            $activity = Kegiatan::where('id_mitra', $employer->id_mitra)->find($activityId);
+            if (!$activity) {
+                return response()->json([
+                    'message' => 'Kegiatan tidak ditemukan.'
+                ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'nama_benefit' => 'max:30',
+            ], [
+                'nama_benefit.max' => 'Benefit tidak boleh lebih dari 30 karakter'              
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'message' => 'Validasi gagal',
+                    'errors' => $validator->errors()
+                ], 400);
+            }
+
+            $benefit = Benefit::firstOrCreate(['nama_benefit' => $request->input('nama_benefit')]);
+            $activity->benefits()->attach($benefit->id_benefit);
+
+            $benefit->save();
+
+            Redis::del("detail:activity:{$employerId}:{$activityId}", "detail:acitivity:{$activityId}");
+
             return response()->json([
-                'message' => 'Employer tidak ditemukan.'
-            ], 404);
-        }
-
-        $activity = Kegiatan::where('id_mitra', $employer->id_mitra)->find($idActivity);
-        if (!$activity) {
+                'message' => 'Benefit berhasil ditambahkan pada kegiatan ini',
+                'data' => $benefit
+            ], 201);
+        } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Kegiatan tidak ditemukan.'
-            ], 404);
+                'message' => 'Gagal menambahkan benefit',
+                'error' => $e->getMessage()
+            ], 500);
         }
-
-        $benefit = Benefit::firstOrCreate(['nama_benefit' => $request->input('nama_benefit')]);
-        $activity->benefits()->attach($benefit->id_benefit);
-
-        $benefit->save();
-
-        return response()->json([
-            'message' => 'Benefit berhasil ditambahkan pada kegiatan ini',
-            'data' => $benefit
-        ], 201);
     }
 
-    public function deleteBenefit($idEmployer, $idActivity, $idBenefit) {
-        $employer = Mitra::find($idEmployer);
-        if (!$employer) {
-            return response()->json([
-                'message' => 'Employer tidak ditemukan.'
-            ], 404);
-        }
-
-        $activity = Kegiatan::where('id_mitra', $employer->id_mitra)
-                                ->find($idActivity);
-        if (!$activity) {
-            return response()->json([
-                'message' => 'Kegiatan tidak ditemukan.'
-            ], 404);
-        }
-        
-        $benefit = $activity->benefits()->find($idBenefit);
-        if (!$benefit) {
-            return response()->json([
-                'message' => 'Benefit tidak ditemukan.'
-            ], 404);
-        }
-
-        // Hapus hubungan benefit dengan kegiatan
-        $activity->benefits()->detach($benefit->id_benefit);
-
-        // Periksa apakah benefit masih digunakan oleh kegiatan lain
-        $otherActivity = $benefit->kegiatans()->count();
-
-        if ($otherActivity > 0) {
-            return response()->json([
-                'message' => 'Benefit dihapus dari kegiatan ini'
-            ], 200);
-        }
-
-        $benefit->delete();
-
-        return response()->json([
-            'message' => 'Benefit berhasil dihapus'
-        ], 200);
-    }
-
-    // Kelola Requirement
-    public function addRequirement(Request $request, $idEmployer, $idActivity) {
-        $employer = Mitra::find($idEmployer);
-        if (!$employer) {
-            return response()->json([
-                'message' => 'Employer tidak ditemukan.'
-            ], 404);
-        }
-
-        $activity = Kegiatan::where('id_mitra', $employer->id_mitra)
-                                ->find($idActivity);
-        if (!$activity) {
-            return response()->json([
-                'message' => 'Kegiatan tidak ditemukan.'
-            ], 404);
-        }
-
-        $requirement = Kriteria::firstOrCreate(['nama_kriteria' => $request->input('nama_kriteria')]);
-        $activity->kriterias()->attach($requirement->id_kriteria);
-
-        $requirement->save(); 
-
-        return response()->json([
-            'message' => 'Kriteria berhasil ditambahkan pada kegiatan ini',
-            'data' => $requirement
-        ], 201);
-    }
-
-    public function deleteRequirement($idEmployer, $idActivity, $idRequirement) {
-        $employer = Mitra::find($idEmployer);
-        if (!$employer) {
-            return response()->json([
-                'message' => 'Employer tidak ditemukan.'
-            ], 404);
-        }
-
-        $activity = Kegiatan::where('id_mitra', $employer->id_mitra)
-                                ->find($idActivity);
-        if (!$activity) {
-            return response()->json([
-                'message' => 'Kegiatan tidak ditemukan.'
-            ], 404);
-        }
-        
-        $requirement = $activity->kriterias()->find($idRequirement);
-        if (!$requirement) {
-            return response()->json([
-                'message' => 'Kriteria tidak ditemukan.'
-            ], 404);
-        }
-
-        // Hapus hubungan benefit dengan kegiatan
-        $activity->kriterias()->detach($requirement->id_benefit);
-
-        // Periksa apakah benefit masih digunakan oleh kegiatan lain
-        $otherActivity = $requirement->kegiatans()->count();
-
-        if ($otherActivity > 0) {
-            return response()->json([
-                'message' => 'Kriteria dihapus dari kegiatan ini'
-            ], 200);
-        }
-
-        $requirement->delete();
-
-        return response()->json([
-            'message' => 'Kriteria berhasil dihapus'
-        ], 200);
-    }
-
-    // Kelola Pendaftar
-    public function updateApplicant(Request $request, $idEmployer, $idApplicant, $idActivity) {
-        try{ 
-            $employer = Mitra::find($idEmployer);
+    public function deleteBenefit($employerId, $activityId, $benefitId) 
+    {
+        try {
+            $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json([
                     'message' => 'Employer tidak ditemukan.'
@@ -608,7 +585,254 @@ class EmployerApiController extends Controller
             }
 
             $activity = Kegiatan::where('id_mitra', $employer->id_mitra)
-                            ->where('id_kegiatan', $idActivity)
+                                    ->find($activityId);
+            if (!$activity) {
+                return response()->json([
+                    'message' => 'Kegiatan tidak ditemukan.'
+                ], 404);
+            }
+            
+            $benefit = $activity->benefits()->find($benefitId);
+            if (!$benefit) {
+                return response()->json([
+                    'message' => 'Benefit tidak ditemukan.'
+                ], 404);
+            }
+
+            // Hapus hubungan benefit dengan kegiatan
+            $activity->benefits()->detach($benefit->id_benefit);
+
+            // Periksa apakah benefit masih digunakan oleh kegiatan lain
+            $otherActivity = $benefit->kegiatans()->count();
+
+            if ($otherActivity > 0) {
+                return response()->json([
+                    'message' => 'Benefit dihapus dari kegiatan ini'
+                ], 200);
+            }
+
+            $benefit->delete();
+
+            Redis::del("detail:activity:{$employerId}:{$activityId}", "detail:acitivity:{$activityId}");
+
+            return response()->json([
+                'message' => 'Benefit berhasil dihapus'
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Gagal menghapus benefit',
+                'error' => $e->getMessage()
+            ], 500);
+        } 
+    }
+
+    // Kelola Requirement
+    public function addRequirement(Request $request, $employerId, $activityId) 
+    {
+        try {
+            $employer = Mitra::find($employerId);
+            if (!$employer) {
+                return response()->json([
+                    'message' => 'Employer tidak ditemukan.'
+                ], 404);
+            }
+
+            $activity = Kegiatan::where('id_mitra', $employer->id_mitra)
+                                    ->find($activityId);
+            if (!$activity) {
+                return response()->json([
+                    'message' => 'Kegiatan tidak ditemukan.'
+                ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'nama_kriteria' => 'max:30',
+            ], [
+                'nama_kriteria.max' => 'Kriteria tidak boleh lebih dari 30 karakter'              
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'message' => 'Validasi gagal',
+                    'errors' => $validator->errors()
+                ], 400);
+            }
+
+            $requirement = Kriteria::firstOrCreate(['nama_kriteria' => $request->input('nama_kriteria')]);
+            $activity->kriterias()->attach($requirement->id_kriteria);
+
+            $requirement->save(); 
+
+            Redis::del("detail:activity:{$employerId}:{$activityId}","detail:acitivity:{$activityId}");
+
+            return response()->json([
+                'message' => 'Kriteria berhasil ditambahkan pada kegiatan ini',
+                'data' => $requirement
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Gagal menambahkan kriteria',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function deleteRequirement($employerId, $activityId, $requirementId) 
+    {
+        try {
+            $employer = Mitra::find($employerId);
+            if (!$employer) {
+                return response()->json([
+                    'message' => 'Employer tidak ditemukan.'
+                ], 404);
+            }
+
+            $activity = Kegiatan::where('id_mitra', $employer->id_mitra)
+                                    ->find($activityId);
+            if (!$activity) {
+                return response()->json([
+                    'message' => 'Kegiatan tidak ditemukan.'
+                ], 404);
+            }
+            
+            $requirement = $activity->kriterias()->find($requirementId);
+            if (!$requirement) {
+                return response()->json([
+                    'message' => 'Kriteria tidak ditemukan.'
+                ], 404);
+            }
+
+            // Hapus hubungan benefit dengan kegiatan
+            $activity->kriterias()->detach($requirement->id_benefit);
+
+            // Periksa apakah benefit masih digunakan oleh kegiatan lain
+            $otherActivity = $requirement->kegiatans()->count();
+
+            if ($otherActivity > 0) {
+                return response()->json([
+                    'message' => 'Kriteria dihapus dari kegiatan ini'
+                ], 200);
+            }
+
+            $requirement->delete();
+
+            Redis::del("detail:activity:{$employerId}:{$activityId}", "detail:acitivity:{$activityId}");
+
+            return response()->json([
+                'message' => 'Kriteria berhasil dihapus'
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Gagal menghapus kriteria',
+                'error' => $e->getMessage()
+            ], 500);
+        } 
+    }
+
+    // Kelola Pendaftar
+    public function applicants($employerId) 
+    {
+        $key="employer:applicants:{$employerId}";
+        $applicantData = Redis::get($key);
+
+        if(!$applicantData) {
+            $employer = Mitra::find($employerId);
+
+            if(!$employer) {
+                return response()->json([
+                    'message' => '"Nope, we couldn’t find that ID. It’s either gone or never existed 🙄"'
+                ], 404);
+            }
+
+            $activities = Kegiatan::where('id_mitra', $employer->id_mitra)->pluck('id_kegiatan');
+
+            $applicants = Pendaftar::whereIn('id_kegiatan', $activities)
+                                        ->select('id_user', 'id_kegiatan', 'status_applicant', 'tgl_pendaftaran')
+                                        ->get();
+
+            Redis::setex("$key", 3600, json_encode($applicants));
+            return response()->json([
+                'success' => true,
+                'message' => 'Berhasil mengambil seluruh pendaftar pada mitra ini',
+                'data' => $applicants
+            ], 200);
+        } else {
+            $applicants = json_decode($applicantData);
+            return response()->json([
+                'success' => true,
+                'message' => 'Data berhasil diambil dari redis',
+                'data' => $applicants
+            ]);
+        }
+    }
+
+    public function detailApplicant($employerId, $userId)
+    {
+        try {
+            $key = "detail:applicant:{$employerId}:{$userId}";
+            $detailApplicantData = Redis::get($key);
+
+            if (!$detailApplicantData) {
+                $employer = Mitra::find($employerId);
+                if (!$employer) {
+                    return response()->json([
+                        'message' => 'Employer tidak ditemukan.'
+                    ], 404);
+                }
+
+                $activities = Kegiatan::where('id_mitra', $employer->id_mitra)->pluck('id_kegiatan');
+
+                if ($activities->isEmpty()) {
+                    return response()->json([
+                        'message' => 'Tidak ada kegiatan terkait employer ini.'
+                    ], 404);
+                }
+
+                $applicant = Pendaftar::where('id_pendaftar', $userId)
+                                    ->whereIn('id_kegiatan', $activities)
+                                    ->first();
+
+                if (!$applicant) {
+                    return response()->json([
+                        'message' => 'Pendaftar tidak ditemukan.'
+                    ], 404);
+                }
+
+                Redis::setex($key, 3600, json_encode($applicant));
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Detail pendaftar berhasil diambil.',
+                    'data' => $applicant
+                ], 200);
+            } else {
+                $applicant = json_decode($detailApplicantData);
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Detail pendaftar berhasil diambil dari Redis.',
+                    'data' => $applicant
+                ], 200);
+            }
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan saat mengambil detail pendaftar.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function updateApplicant(Request $request, $employerId, $userId, $activityId) {
+        try{ 
+            $employer = Mitra::find($employerId);
+            if (!$employer) {
+                return response()->json([
+                    'message' => 'Employer tidak ditemukan.'
+                ], 404);
+            }
+
+            $activity = Kegiatan::where('id_mitra', $employer->id_mitra)
+                            ->where('id_kegiatan', $activityId)
                             ->first();
 
             if (!$activity) {
@@ -619,13 +843,29 @@ class EmployerApiController extends Controller
 
             // Cek apakah pendaftar yang dimaksud terdaftar pada kegiatan ini
             $applicant = Pendaftar::where('id_kegiatan', $activity->id_kegiatan)
-                                ->where('id_pendaftar', $idApplicant)
+                                ->where('id_pendaftar', $userId)
                                 ->first();
 
             if (!$applicant) {
                 return response()->json([
                     'message' => 'Pendaftar tidak ditemukan untuk kegiatan ini.'
                 ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'status_applicant' => 'required',
+                'note_to_applicant' => 'required|max:255',
+            ], [
+                'status_applicant.required' => 'Status Applicant harus diisi.',
+                'note_to_applicant.required' => 'Hire/Reject wajib menyertakan note kepada Applicant.',
+                'note_to_applicant.max' => 'Note untuk applicant tidak boleh lebih dari 255 karakter'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'message' => 'Validasi gagal',
+                    'errors' => $validator->errors()
+                ], 400);
             }
 
             $applicant->status_applicant = $request->status_applicant;
@@ -659,6 +899,8 @@ class EmployerApiController extends Controller
             $applicant->tgl_note = Date::now();
             $applicant->save();
 
+            Redis::del("user:profile:{$userId}", "employer:applicants:{$employerId}", "detail:applicant:{$employerId}:{$userId}");
+
             return response()->json([
                 'message' => 'Update Pendaftar Berhasil',
                 'data'=>$applicant
@@ -671,9 +913,9 @@ class EmployerApiController extends Controller
         }
     }
 
-    public function updateInterview(Request $request, $idEmployer, $idApplicant, $idActivity) {
+    public function updateInterview(Request $request, $employerId, $userId, $activityId) {
         try{
-            $employer = Mitra::find($idEmployer);
+            $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json([
                     'message' => 'Employer tidak ditemukan.'
@@ -681,7 +923,7 @@ class EmployerApiController extends Controller
             }
 
             $activity = Kegiatan::where('id_mitra', $employer->id_mitra)
-                            ->where('id_kegiatan', $idActivity)
+                            ->where('id_kegiatan', $activityId)
                             ->first();
 
             if (!$activity) {
@@ -690,15 +932,36 @@ class EmployerApiController extends Controller
                 ], 404);
             }
 
-            // Cek apakah pendaftar yang dimaksud terdaftar pada kegiatan ini
             $applicant = Pendaftar::where('id_kegiatan', $activity->id_kegiatan)
-                                ->where('id_pendaftar', $idApplicant)
+                                ->where('id_pendaftar', $userId)
                                 ->first();
 
             if (!$applicant) {
                 return response()->json([
                     'message' => 'Pendaftar tidak ditemukan untuk kegiatan ini.'
                 ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'tgl_interview' => 'required|date',
+                'lokasi_interview' => 'required|max:255',
+                'interview_time' => 'required|date_format:H:i',
+                'note_interview' => 'nullable|max:255',
+            ], [
+                'tgl_interview.required' => 'Tanggal interview harus diisi.',
+                'tgl_interview.date' => 'Tanggal interview diisi dengan format YYYY-MM-DD',
+                'lokasi_interview.required' => 'Lokasi interview wajib diisi',
+                'lokasi_interview.max' => 'Lokasi interview tidak boleh lebih dari 255 karakter',
+                'interview_time.required' => 'Waktu Interview wajib diisi',
+                'interview_time.date_format' => 'Waktu interview diisi dengan format HH:MM',
+                'note_interview.max' => 'Note interview tidak boleh lebih dari 255 karakter'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'message' => 'Validasi gagal',
+                    'errors' => $validator->errors()
+                ], 400);
             }
 
             $applicant->status_applicant = 'Interview';
@@ -721,6 +984,8 @@ class EmployerApiController extends Controller
             $applicant->tgl_note = Date::now();
 
             $applicant->save();
+
+            Redis::del("user:profile:{$userId}", "employer:applicants:{$employerId}", "detail:applicant:{$employerId}:{$userId}");
 
             return response()->json([
                 'message' => 'Data pendaftar berhasil diperbarui',

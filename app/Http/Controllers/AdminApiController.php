@@ -231,10 +231,10 @@ class AdminApiController extends Controller
 
             // Validasi input
             $validator = Validator::make($request->all(), [
-                'nama_kategori' => 'required|max:255',
+                'nama_kategori' => 'required|max:50',
             ], [
                 'nama_kategori.required' => 'Kategori wajib diisi.',
-                'nama_kategori.max' => 'Kategori tidak boleh lebih dari 255 karakter.',
+                'nama_kategori.max' => 'Kategori tidak boleh lebih dari 50 karakter.',
             ]);
 
             if ($validator->fails()) {
