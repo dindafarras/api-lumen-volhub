@@ -47,6 +47,7 @@ class AdminApiController extends Controller
         }
 
         return response()->json([
+            'success' => true,
             'message' => 'Login berhasil',
             'token' => $token,
         ], 200);
@@ -138,10 +139,10 @@ class AdminApiController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Data berhasil diperbarui.',
-                'data' => $admin
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Gagal melakukan perubahan profile admin',
                 'error' => $e->getMessage(),
             ], 500);
@@ -209,11 +210,12 @@ class AdminApiController extends Controller
             Redis::del('admin:category:all');
 
             return response()->json([
+                'success' => true,
                 'message' => 'Kategori baru behasil ditambahkan',
-                'data' => $category
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Gagal menambahkan kategori baru',
                 'error' => $e->getMessage()
             ], 500);
@@ -250,11 +252,12 @@ class AdminApiController extends Controller
             Redis::del('admin:category:all');
 
             return response()->json([
+                'success' => true,
                 'message' => 'Berhasil edit kategori',
-                'data' => $category
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Gagal edit kategori',
                 'error' => $e->getMessage(),
             ], 500);
@@ -275,10 +278,12 @@ class AdminApiController extends Controller
             Redis::del('admin:category:all');
 
             return response()->json([
+                'success' => true,
                 'message' => 'Berhasil menghapus kategori'
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Gagal menghapus Kategori',
                 'error' => $e->getMessage()
             ], 500);
@@ -325,14 +330,14 @@ class AdminApiController extends Controller
         }
     }
 
-    public function detailUser($idUser)
+    public function detailUser($userId)
     {
         try{
-            $key = "admin:DetailUser:{$idUser}";
+            $key = "admin:DetailUser:{$userId}";
             $detailUserData = Redis::get($key);
 
             if (!$detailUserData) {
-                $detailUser = User::find($idUser);
+                $detailUser = User::find($userId);
 
                 if (!$detailUser) {
                     return response()->json(['message' => 'User tidak ditemukan'], 404);
@@ -398,14 +403,14 @@ class AdminApiController extends Controller
         }
     }
 
-    public function detailMitra($idMitra)
+    public function detailMitra($employerId)
     {
         try {
-            $key = "admin:detailMitra:{$idMitra}";
+            $key = "admin:detailMitra:{$employerId}";
             $detailMitraData = Redis::get($key);
 
             if(!$detailMitraData) {
-                $detailMitra = Mitra::find($idMitra);
+                $detailMitra = Mitra::find($employerId);
 
                 if (!$detailMitra) {
                     return response()->json(['message' => 'Mitra tidak ditemukan'], 404);

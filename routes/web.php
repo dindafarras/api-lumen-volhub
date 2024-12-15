@@ -30,7 +30,8 @@ $router->group([
 
         // Kelola Experience
         $router->post('addExperience/{userId}', 'UserApiController@addExperience');
-        $router->delete('deleteExperience/{userId}/{idExperience}', 'UserApiController@deleteExperience');
+        $router->put('editExperience/{userId}/{experienceId}', 'UserApiController@editExperience');
+        $router->delete('deleteExperience/{userId}/{experienceId}', 'UserApiController@deleteExperience');
 
     });
 });
@@ -55,11 +56,11 @@ $router->group([
 
         // Kelola User
         $router->get('user', 'AdminApiController@user');
-        $router->get('detailUser/{idUser}', 'AdminApiController@detailUser');
+        $router->get('detailUser/{userId}', 'AdminApiController@detailUser');
 
         // Kelola Mitra
         $router->get('mitra', 'AdminApiController@mitra');
-        $router->get('detailMitra/{idMitra}', 'AdminApiController@detailMitra');
+        $router->get('detailMitra/{employerId}', 'AdminApiController@detailMitra');
 
     });
 });

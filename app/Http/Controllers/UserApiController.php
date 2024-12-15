@@ -42,12 +42,14 @@ class UserApiController extends Controller
             }
         } catch (JWTException $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Gagal membuat token',
                 'error' => $e->getMessage(),
             ], 500);
         }
 
         return response()->json([
+            'success' => true,
             'message' => 'Login berhasil',
             'token' => $token,
         ], 200);
@@ -117,11 +119,12 @@ class UserApiController extends Controller
             Redis::del('user:all');
 
             return response()->json([
+                'success' => true,
                 'message' => 'Registrasi Berhasil',
-                'data'=>$registrasi
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Gagal melakukan registrasi',
                 'error'=>$e->getMessage() 
             ], 500);
@@ -261,7 +264,7 @@ class UserApiController extends Controller
             // Simpan perubahan pada user
             $user->save();
 
-            Redis::del("user:all", "user:profile:{$userId}");
+            Redis::del("user:all", "user:profile:{$userId}", "admin:DetailUser:{$userId}");
 
             return response()->json([
                 'message' => 'Berhasil edit User',
@@ -269,6 +272,7 @@ class UserApiController extends Controller
             ], 200);
         } catch (\Exception $e){
             return response()->json([
+                'success' => false,
                 'message' => 'Gagal edit User',
                 'error' => $e->getMessage()
             ], 500);
@@ -342,11 +346,12 @@ class UserApiController extends Controller
             Redis::del("mitra:pendaftar");// MASIH BINGUNG YANG INI
 
             return response()->json([
+                'success' => true,
                 'message' => 'Pendaftaran behasil dilakukan',
-                'data'=>$apply,
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Gagal melakukan pendaftaran',
                 'error' => $e->getMessage()
             ], 500);
@@ -382,12 +387,13 @@ class UserApiController extends Controller
             Redis::del("user:profile:{$userId}");
 
             return response()->json([
+                'success' => true,
                 'message' => 'Berhasil menambahkan skill',
-                'data' => $skill
             ], 200);
 
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Gagal menambahkan skill',
                 'error' => $e->getMessage()
             ], 500);
@@ -415,6 +421,7 @@ class UserApiController extends Controller
 
             if ($otherUsers > 0) {
                 return response()->json([
+                    'success' => true,
                     'message' => 'Skill dihapus dari user ini'
                 ], 200);
             }
@@ -424,11 +431,13 @@ class UserApiController extends Controller
             Redis::del("user:profile:{$userId}");
 
             return response()->json([
+                'success' => true,
                 'message' => 'Skill berhasil dihapus'
             ], 200);
 
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Gagal menghapus skill',
                 'error' => $e->getMessage()
             ], 500);
@@ -469,6 +478,7 @@ class UserApiController extends Controller
 
             if ($validator->fails()) {
                 return response()->json([
+                    'success' => false,
                     'message' => 'Validasi gagal',
                     'errors' => $validator->errors()
                 ], 400);
@@ -488,19 +498,20 @@ class UserApiController extends Controller
             Redis::del("user:profile:{$userId}");
 
             return response()->json([
+                'success' => true,
                 'message' => 'Experience berhasil ditambahkan',
-                'data'=>$experience
             ], 200);
 
         } catch (\Exception $e) {
             return response()->json ([
+                'success' => false,
                 'message' => 'Gagal menambahkan experience baru',
                 'error' => $e->getMessage()
             ], 500);
         }
     }
 
-    public function deleteExperience($userId, $idExperience) 
+    public function editExperience(Request $request, $userId, $experienceId) 
     {
         try {
             $user = User::find($userId);
@@ -509,7 +520,73 @@ class UserApiController extends Controller
                 return response()->json(['message' => 'User tidak ditemukan'], 404);
             }
 
-            $experience = $user->experiences()->find($idExperience);
+            $experience = $user->experiences()->find($experienceId);
+
+            if (!$experience) {
+                return response()->json([
+                    'message' => 'Experience tidak ditemukan untuk user ini'
+                ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'judul_kegiatan' => 'nullable|max:30',
+                'lokasi_kegiatan' => 'nullable|max:30',
+                'tgl_mulai' => 'nullable|date',
+                'tgl_selesai' => 'nullable|date',
+                'deskripsi' => 'nullable|max:255',
+                'mitra' => 'nullable|max:50',
+            ], [
+                'judul_kegiatan.max' => 'Nama kegiatan tidak boleh lebih dari 30 karakter',
+                'lokasi_kegiatan.max' => 'Lokasi kegiatan tidak boleh lebih dari 30 karakter',
+                'tgl_mulai.date' => 'Tanggal mulai kegiatan diisi dengan format YYYY-MM-DD',
+                'tgl_selesai.date' => 'Tanggal selesai kegiatan diisi dengan format YYYY-MM-DD',
+                'deskripsi.max' => 'Deskripsi kegiatan tidak boleh lebih dari 255 karakter',
+                'mitra.max' => 'Mitra kegiatan tidak boleh lebih dari 50 karakter',             
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validasi gagal',
+                    'errors' => $validator->errors()
+                ], 400);
+            }
+
+            $experience->id_user= $user->id;
+            $experience->judul_kegiatan= $request->judul_kegiatan ?? $experience->judul_kegiatan;
+            $experience->lokasi_kegiatan = $request->lokasi_kegiatan ?? $experience->lokasi_kegiatan;
+            $experience->tgl_mulai = $request->tgl_mulai ?? $experience->tgl_mulai;
+            $experience->tgl_selesai = $request->tgl_selesai ?? $experience->tgl_selesai;
+            $experience->deskripsi = $request->deskripsi ?? $experience->deskripsi;
+            $experience->mitra = $request->mitra ?? $experience->mitra;
+
+            $experience->save();
+
+            Redis::del("user:profile:{$userId}");
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Experience berhasil diperbarui',
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json ([
+                'success' => false,
+                'message' => 'Gagal menambahkan experience baru',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function deleteExperience($userId, $experienceId) 
+    {
+        try {
+            $user = User::find($userId);
+
+            if (!$user) {
+                return response()->json(['message' => 'User tidak ditemukan'], 404);
+            }
+
+            $experience = $user->experiences()->find($experienceId);
 
             if (!$experience) {
                 return response()->json([

@@ -46,12 +46,14 @@ class EmployerApiController extends Controller
             }
         } catch (JWTException $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Gagal membuat token',
                 'error' => $e->getMessage(),
             ], 500);
         }
 
         return response()->json([
+            'success' => true,
             'message' => 'Login berhasil',
             'token' => $token,
         ], 200);
@@ -120,11 +122,13 @@ class EmployerApiController extends Controller
             Redis::del('mitra:all');
 
             return response()->json([
+                'success' => true,
                 'message' => 'Registrasi Berhasil',
                 'data'=>$registrasi
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Gagal melakukan registrasi',
                 'error'=>$e->getMessage() 
             ], 500);
@@ -251,7 +255,7 @@ class EmployerApiController extends Controller
 
             $employer->save();
 
-            Redis::del("employer:all", "employer:profile:{$employerId}");
+            Redis::del("employer:all", "employer:profile:{$employerId}", "admin:detailMitra:{$employerId}");
 
             return response()->json([
                 'success' => true,
@@ -405,11 +409,12 @@ class EmployerApiController extends Controller
             Redis::del("employer:activities:{$employerId}", "all:activities");
 
             return response()->json([
+                'success' => true,
                 'message' => 'Kegiatan berhasil ditambahkan',
-                'data' => $activity
             ], 201);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Gagal menambahkan kegiatan',
                 'error' => $e->getMessage()
             ], 500);
@@ -481,11 +486,12 @@ class EmployerApiController extends Controller
             Redis::del("employer:activities:{$employerId}", "detail:activity:{$employerId}:{$activityId}", "all:activities", "detail:acitivity:{$activityId}");
 
             return response()->json([
+                'success' => true,
                 'message' => 'Kegiatan berhasil diperbarui',
-                'data' => $activity
             ], 201);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Gagal memperbarui kegiatan',
                 'error' => $e->getMessage()
             ], 500);
@@ -514,10 +520,12 @@ class EmployerApiController extends Controller
             Redis::del("employer:activities:{$employerId}", "all:activities");
 
             return response()->json([
+                'success' => true,
                 'message' => 'Kegiatan berhasil dihapus'
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Gagal menghapus Kegiatan',
                 'error' => $e->getMessage()
             ], 500);
@@ -563,11 +571,12 @@ class EmployerApiController extends Controller
             Redis::del("detail:activity:{$employerId}:{$activityId}", "detail:acitivity:{$activityId}");
 
             return response()->json([
+                'success' => true,
                 'message' => 'Benefit berhasil ditambahkan pada kegiatan ini',
-                'data' => $benefit
             ], 201);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Gagal menambahkan benefit',
                 'error' => $e->getMessage()
             ], 500);
@@ -607,6 +616,7 @@ class EmployerApiController extends Controller
 
             if ($otherActivity > 0) {
                 return response()->json([
+                    'success' => true,
                     'message' => 'Benefit dihapus dari kegiatan ini'
                 ], 200);
             }
@@ -616,10 +626,12 @@ class EmployerApiController extends Controller
             Redis::del("detail:activity:{$employerId}:{$activityId}", "detail:acitivity:{$activityId}");
 
             return response()->json([
+                'success' => true,
                 'message' => 'Benefit berhasil dihapus'
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Gagal menghapus benefit',
                 'error' => $e->getMessage()
             ], 500);
@@ -666,11 +678,12 @@ class EmployerApiController extends Controller
             Redis::del("detail:activity:{$employerId}:{$activityId}","detail:acitivity:{$activityId}");
 
             return response()->json([
+                'success' => true,
                 'message' => 'Kriteria berhasil ditambahkan pada kegiatan ini',
-                'data' => $requirement
             ], 201);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Gagal menambahkan kriteria',
                 'error' => $e->getMessage()
             ], 500);
@@ -710,6 +723,7 @@ class EmployerApiController extends Controller
 
             if ($otherActivity > 0) {
                 return response()->json([
+                    'success' => true,
                     'message' => 'Kriteria dihapus dari kegiatan ini'
                 ], 200);
             }
@@ -719,10 +733,12 @@ class EmployerApiController extends Controller
             Redis::del("detail:activity:{$employerId}:{$activityId}", "detail:acitivity:{$activityId}");
 
             return response()->json([
+                'success' => true,
                 'message' => 'Kriteria berhasil dihapus'
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Gagal menghapus kriteria',
                 'error' => $e->getMessage()
             ], 500);
