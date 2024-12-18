@@ -838,7 +838,8 @@ class EmployerApiController extends Controller
         }
     }
 
-    public function updateApplicant(Request $request, $employerId, $userId, $activityId) {
+    public function updateApplicant(Request $request, $employerId, $userId, $activityId) 
+    {
         try{ 
             $employer = Mitra::find($employerId);
             if (!$employer) {
@@ -857,7 +858,6 @@ class EmployerApiController extends Controller
                 ], 404);
             }
 
-            // Cek apakah pendaftar yang dimaksud terdaftar pada kegiatan ini
             $applicant = Pendaftar::where('id_kegiatan', $activity->id_kegiatan)
                                 ->where('id_pendaftar', $userId)
                                 ->first();
@@ -886,7 +886,6 @@ class EmployerApiController extends Controller
 
             $applicant->status_applicant = $request->status_applicant;
 
-            // Tentukan note_to_applicant berdasarkan status_applicant
             switch (ucfirst(strtolower($request->status_applicant))) {
                 case 'Shortlist':
                     $applicant->note_to_applicant = "You have been shortlisted.";
