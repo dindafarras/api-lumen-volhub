@@ -23,7 +23,7 @@ class AdminApiController extends Controller
 {
     
     // Login Admin
-    public function loginAdmin(Request $request) 
+    public function loginAdmin(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'username' => 'required',
@@ -34,23 +34,78 @@ class AdminApiController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
+        $username = $request->input('username');
         $credentials = $request->only('username', 'password');
 
-        try {
-            if (!$token = auth('admin')->attempt($credentials)) {
-                return response()->json(['message' => 'Login gagal, username atau password salah'], 401);
-            }
-        } catch (JWTException $e) {
+        // Periksa apakah pengguna sedang diblokir
+        $attemptKey = "login:attempts:$username";
+        $blockKey = "login:blocked:$username";
+
+        if (Redis::exists($blockKey)) {
+            $ttl = Redis::ttl($blockKey);
             return response()->json([
-                'message' => 'Gagal membuat token'
-            ], 500);
+                'success' => false,
+                'message' => "Terlalu banyak percobaan login. Coba lagi dalam $ttl detik.",
+            ], 429);
         }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Login berhasil',
-            'token' => $token,
-        ], 200);
+        try {
+            // Cek apakah token sudah ada di Redis
+            $redisKey = "admin:token:$username";
+            if (Redis::exists($redisKey)) {
+                $token = Redis::get($redisKey);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Login berhasil (token diambil dari Redis)',
+                    'token' => $token,
+                ], 200);
+            }
+
+            // Login dan buat token baru
+            $admin = Admin::where('username', $username)->first();
+            if (!$admin || !Hash::check($credentials['password'], $admin->password)) {
+                // Tambah jumlah percobaan login
+                $attempts = Redis::incr($attemptKey);
+                Redis::expire($attemptKey, 3600);
+
+                if ($attempts >= 5) {
+                    Redis::setex($blockKey, 300, true);
+                    Redis::del($attemptKey);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Terlalu banyak percobaan login. Anda diblokir selama 5 menit.',
+                    ], 429);
+                }
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Login gagal, username atau password salah.',
+                    'attempts_left' => 5 - $attempts,
+                ], 401);
+            }
+
+            // Buat token baru untuk mitra
+            $token = JWTAuth::claims([
+                'username' => $username,
+                'iat' => time(),
+            ])->fromUser($admin);
+
+            // Simpan token ke Redis
+            Redis::setex($redisKey, 3600, $token);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Login berhasil (token baru dibuat)',
+                'token' => $token,
+            ], 200);
+        } catch (JWTException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal membuat token',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     // Profile Admin
@@ -92,6 +147,14 @@ class AdminApiController extends Controller
     public function editProfile(Request $request, $idAdmin)
     {
         try {
+            $authenticatedidAdmin = auth('admin')->user()->id;
+            if ($authenticatedidAdmin != $idAdmin) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin.',
+                ], 403);
+            }
+
             $admin = Admin::find($idAdmin);
 
             if (!$admin) {
@@ -433,6 +496,47 @@ class AdminApiController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Gagal mengambil data detail mitra',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function logout(Request $request)
+    {
+        try {
+            // Ambil token dari header Authorization
+            $token = $request->bearerToken();
+
+            if (!$token) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Token tidak ditemukan.',
+                ], 400);
+            }
+
+            // Decode token untuk mendapatkan username
+            $payload = JWTAuth::setToken($token)->getPayload();
+            $username = $payload->get('username');
+
+            // Hapus token dari Redis
+            $redisKey = "admin:token:$username";
+            if (Redis::exists($redisKey)) {
+                Redis::del($redisKey);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Logout berhasil. Token telah dihapus.',
+                ], 200);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Token tidak ditemukan di Redis.',
+                ], 404);
+            }
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal logout.',
                 'error' => $e->getMessage(),
             ], 500);
         }

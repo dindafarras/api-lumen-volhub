@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 use Illuminate\Support\Facades\Auth;
 use App\Models\User;
 use App\Models\Skill;
+use App\Models\Mitra;
 use App\Models\Kegiatan;
 use App\Models\Pendaftar;
 use App\Models\Experience;
@@ -23,6 +24,7 @@ use Tymon\JWTAuth\Exceptions\JWTException;
 class UserApiController extends Controller
 {
     //Login User
+
     public function loginUser(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -34,12 +36,71 @@ class UserApiController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
+        $username = $request->input('username');
         $credentials = $request->only('username', 'password');
 
+        // Periksa apakah pengguna sedang diblokir
+        $attemptKey = "login:attempts:$username";
+        $blockKey = "login:blocked:$username";
+
+        if (Redis::exists($blockKey)) {
+            $ttl = Redis::ttl($blockKey);
+            return response()->json([
+                'success' => false,
+                'message' => "Terlalu banyak percobaan login. Coba lagi dalam $ttl detik.",
+            ], 429);
+        }
+
         try {
-            if (!$token = auth('user')->attempt($credentials)) {
-                return response()->json(['message' => 'Login gagal, username atau password salah'], 401);
+            // Cek apakah token sudah ada di Redis
+            $redisKey = "user:token:$username";
+            if (Redis::exists($redisKey)) {
+                $token = Redis::get($redisKey);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Login berhasil (token diambil dari Redis)',
+                    'token' => $token,
+                ], 200);
             }
+
+            // Login dan buat token baru
+            $user = User::where('username', $username)->first();
+            if (!$user || !Hash::check($credentials['password'], $user->password)) {
+                // Tambah jumlah percobaan login
+                $attempts = Redis::incr($attemptKey);
+                Redis::expire($attemptKey, 3600);
+
+                if ($attempts >= 5) {
+                    Redis::setex($blockKey, 300, true);
+                    Redis::del($attemptKey);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Terlalu banyak percobaan login. Anda diblokir selama 5 menit.',
+                    ], 429);
+                }
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Login gagal, username atau password salah.',
+                    'attempts_left' => 5 - $attempts,
+                ], 401);
+            }
+
+            // Buat token baru untuk mitra
+            $token = JWTAuth::claims([
+                'username' => $username,
+                'iat' => time(),
+            ])->fromUser($user);
+
+            // Simpan token ke Redis
+            Redis::setex($redisKey, 3600, $token);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Login berhasil (token baru dibuat)',
+                'token' => $token,
+            ], 200);
         } catch (JWTException $e) {
             return response()->json([
                 'success' => false,
@@ -47,12 +108,6 @@ class UserApiController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Login berhasil',
-            'token' => $token,
-        ], 200);
     }
 
     // Regitrasi User
@@ -166,6 +221,14 @@ class UserApiController extends Controller
     public function editProfile(Request $request, $userId)
     {
         try {
+            $authenticatedUserId = auth()->user()->id;
+            if ($authenticatedUserId != $userId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin untuk mengedit profil ini.',
+                ], 403);
+            }
+
             $user = User::find($userId);
 
             if (!$user) {
@@ -283,6 +346,14 @@ class UserApiController extends Controller
     public function applyActivity(Request $request, $userId, $idActivity) 
     {
         try {
+            $authenticatedUserId = auth()->user()->id;
+            if ($authenticatedUserId != $userId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin untuk mengedit profil ini.',
+                ], 403);
+            }
+
             $user = User::find($userId);
             $activity = Kegiatan::find($idActivity);
 
@@ -362,6 +433,13 @@ class UserApiController extends Controller
     public function addSkill(Request $request, $userId) 
     {
         try {
+            $authenticatedUserId = auth()->user()->id;
+            if ($authenticatedUserId != $userId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin untuk mengedit profil ini.',
+                ], 403);
+            }
             $user = User::find($userId);
 
             if (!$user) {
@@ -403,6 +481,14 @@ class UserApiController extends Controller
     public function deleteSkill($userId, $idSkill) 
     {
         try {
+            $authenticatedUserId = auth()->user()->id;
+            if ($authenticatedUserId != $userId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin untuk mengedit profil ini.',
+                ], 403);
+            }
+
             $user = User::find($userId);
             if (!$user) {
                 return response()->json(['message' => 'User tidak ditemukan'], 404);
@@ -448,6 +534,14 @@ class UserApiController extends Controller
     public function addExperience(Request $request, $userId) 
     {
         try {
+            $authenticatedUserId = auth()->user()->id;
+            if ($authenticatedUserId != $userId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin untuk mengedit profil ini.',
+                ], 403);
+            }
+
             $user = User::find($userId);
 
             if (!$user) {
@@ -514,6 +608,14 @@ class UserApiController extends Controller
     public function editExperience(Request $request, $userId, $experienceId) 
     {
         try {
+            $authenticatedUserId = auth()->user()->id;
+            if ($authenticatedUserId != $userId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin untuk mengedit profil ini.',
+                ], 403);
+            }
+
             $user = User::find($userId);
 
             if (!$user) {
@@ -580,6 +682,14 @@ class UserApiController extends Controller
     public function deleteExperience($userId, $experienceId) 
     {
         try {
+            $authenticatedUserId = auth()->user()->id;
+            if ($authenticatedUserId != $userId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin untuk mengedit profil ini.',
+                ], 403);
+            }
+
             $user = User::find($userId);
 
             if (!$user) {
@@ -684,6 +794,112 @@ class UserApiController extends Controller
                 'message' => 'Data berhasil diambil dari redis',
                 'data' => $activity
             ]);
+        }
+    }
+    public function employers() 
+    {
+        $key = "all:employers";
+        $allEmployersData = Redis::get($key);
+
+        if (!$allEmployersData) {
+            $employers = Mitra::select('logo', 'nama_mitra', 'industri', 'alamat')->get();
+
+            if (!$employers) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tidak ada kegiatan',
+                ], 404);
+            }
+
+            Redis::setex("$key", 3600, json_encode($employers));
+            return response()->json([
+                'success' => true,
+                'message' => 'Berhasil mengambil seluruh Employer',
+                'data' => $employers
+            ], 200);
+
+        } else {
+            $employers = json_decode($allEmployersData);
+            return response()->json([
+                'success' => true,
+                'message' => 'Data berhasil diambil dari redis',
+                'data' => $employers
+            ]);
+        }
+        
+    }
+
+    public function detailEmployer($employerId) 
+    {
+        $key = "detail:employer:{$employerId}";
+        $detailEmployerData = Redis::get($key);
+
+        if(!$detailEmployerData) 
+        {
+            $employer = Mitra::find($employerId);
+            if (!$employer) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Employer tidak ditemukan',
+                ], 404);
+            }
+
+            Redis::setex("$key", 3600, json_encode($employer));
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Berhasil mengambil detail Employer',
+                'data' => $employer
+            ], 200);
+        } else {
+            $employer = json_decode($detailEmployerData);
+            return response()->json([
+                'success' => true,
+                'message' => 'Data berhasil diambil dari redis',
+                'data' => $employer
+            ]);
+        }
+    }
+
+    public function logout(Request $request)
+    {
+        try {
+            // Ambil token dari header Authorization
+            $token = $request->bearerToken();
+
+            if (!$token) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Token tidak ditemukan.',
+                ], 400);
+            }
+
+            // Decode token untuk mendapatkan username
+            $payload = JWTAuth::setToken($token)->getPayload();
+            $username = $payload->get('username');
+
+            // Hapus token dari Redis
+            $redisKey = "user:token:$username";
+            if (Redis::exists($redisKey)) {
+                Redis::del($redisKey);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Logout berhasil. Token telah dihapus.',
+                ], 200);
+
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Token tidak ditemukan di Redis.',
+                ], 404);
+            }
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal logout.',
+                'error' => $e->getMessage(),
+            ], 500);
         }
     }
 }

@@ -14,8 +14,12 @@ $router->group([
     $router->get('activities', 'UserApiController@activities');
     $router->get('detailActivity/{activityId}', 'UserApiController@detailActivity');
 
+    //Employers
+    $router->get('employers', 'UserApiController@employers');
+    $router->get('detailEmployer/{employerId}', 'UserApiController@detailEmployer');
+
     $router->group([
-        'middleware' => 'jwt.auth',
+        'middleware' => 'auth:user',
     ], function () use ($router) {
         // Profile user
         $router->get('profile', 'UserApiController@profile');
@@ -33,6 +37,8 @@ $router->group([
         $router->put('editExperience/{userId}/{experienceId}', 'UserApiController@editExperience');
         $router->delete('deleteExperience/{userId}/{experienceId}', 'UserApiController@deleteExperience');
 
+        //Logout
+        $router->post('logout', 'UserApiController@logout');
     });
 });
 
@@ -42,7 +48,7 @@ $router->group([
     $router->post('login', 'AdminApiController@loginAdmin');
 
     $router->group([
-        'middleware' => 'jwt.auth'
+        'middleware' => 'auth:admin'
     ], function () use ($router) {
         // Profile admin
         $router->get('profile', 'AdminApiController@profile');
@@ -62,6 +68,9 @@ $router->group([
         $router->get('mitra', 'AdminApiController@mitra');
         $router->get('detailMitra/{employerId}', 'AdminApiController@detailMitra');
 
+        //Logout
+        $router->post('logout', 'AdminApiController@logout');
+
     });
 });
 
@@ -76,7 +85,7 @@ $router->group([
     $router->post('registrasi', 'EmployerApiController@registrasi');
 
     $router->group([
-        'middleware' => 'jwt.auth',
+        'middleware' => 'auth:employer',
     ], function () use ($router) {
         // Profile Employer
         $router->get('profile', 'EmployerApiController@profile');
@@ -103,5 +112,8 @@ $router->group([
 
         $router->put('updateApplicant/{employerId}/{userId}/{activityId}', 'EmployerApiController@updateApplicant');
         $router->put('updateInterview/{employerId}/{userId}/{activityId}', 'EmployerApiController@updateInterview');
+
+        //Logout
+        $router->post('logout', 'EmployerApiController@logout');
     });
 });

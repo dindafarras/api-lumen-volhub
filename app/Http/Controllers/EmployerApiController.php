@@ -38,12 +38,71 @@ class EmployerApiController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
+        $username = $request->input('username');
         $credentials = $request->only('username', 'password');
 
+        // Periksa apakah mitra sedang diblokir
+        $attemptKey = "login:attempts:$username";
+        $blockKey = "login:blocked:$username";
+
+        if (Redis::exists($blockKey)) {
+            $ttl = Redis::ttl($blockKey);
+            return response()->json([
+                'success' => false,
+                'message' => "Terlalu banyak percobaan login. Coba lagi dalam $ttl detik.",
+            ], 429);
+        }
+
         try {
-            if (!$token = auth('employer')->attempt($credentials)) {
-                return response()->json(['message' => 'Login gagal, username atau password salah'], 401);
+            // Cek apakah token sudah ada di Redis untuk mitra
+            $redisKey = "mitra:token:$username";
+            if (Redis::exists($redisKey)) {
+                $token = Redis::get($redisKey);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Login berhasil (token diambil dari Redis)',
+                    'token' => $token,
+                ], 200);
             }
+
+            // Validasi kredensial terhadap tabel mitra
+            $mitra = Mitra::where('username', $username)->first();
+            if (!$mitra || !Hash::check($credentials['password'], $mitra->password)) {
+                // Tambah jumlah percobaan login
+                $attempts = Redis::incr($attemptKey);
+                Redis::expire($attemptKey, 3600);
+
+                if ($attempts >= 5) {
+                    Redis::setex($blockKey, 300, true);
+                    Redis::del($attemptKey);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Terlalu banyak percobaan login. Anda diblokir selama 5 menit.',
+                    ], 429);
+                }
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Login gagal, username atau password salah.',
+                    'attempts_left' => 5 - $attempts,
+                ], 401);
+            }
+
+            // Buat token baru untuk mitra
+            $token = JWTAuth::claims([
+                'username' => $username,
+                'iat' => time(),
+            ])->fromUser($mitra);
+
+            // Simpan token ke Redis untuk mitra
+            Redis::setex($redisKey, 3600, $token);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Login berhasil (token baru dibuat)',
+                'token' => $token,
+            ], 200);
         } catch (JWTException $e) {
             return response()->json([
                 'success' => false,
@@ -51,12 +110,6 @@ class EmployerApiController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Login berhasil',
-            'token' => $token,
-        ], 200);
     }
 
     public function registrasi(Request $request) 
@@ -108,7 +161,7 @@ class EmployerApiController extends Controller
             $registrasi->password = Hash::make($request->password);
             $registrasi->nomor_telephone = $request->nomor_telephone;
 
-            $existing_username = User::where('username', $request->username)->first();
+            $existing_username = Mitra::where('username', $request->username)->first();
             if ($existing_username) {
                 // Jika username sudah digunakan, return dengan pesan error
                 return response()->json([
@@ -119,7 +172,7 @@ class EmployerApiController extends Controller
 
             $registrasi-> save();
             
-            Redis::del('mitra:all');
+            Redis::del('mitra:all', 'all:employers');
 
             return response()->json([
                 'success' => true,
@@ -170,10 +223,15 @@ class EmployerApiController extends Controller
     public function editProfile(Request $request, $employerId) 
     {
         try {
+            $authenticatedEmployerId = auth('employer')->user()->id_mitra;
+                if ($authenticatedEmployerId != $employerId) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Anda tidak memiliki izin.',
+                    ], 403);
+                }
+
             $employer = Mitra::find($employerId);
-            if (!$employer) {
-                return response()->json(['message' => 'Mitra tidak ditemukan'], 404);
-            }
 
             $validator = Validator::make($request->all(), [
                 'username' => 'nullable|max:50',
@@ -219,7 +277,7 @@ class EmployerApiController extends Controller
 
             $employer->username = $request->username ?? $employer->username;
 
-            $existing_username = User::where('username', $request->username)->first();
+            $existing_username = Mitra::where('username', $request->username)->first();
             if ($existing_username) {
                 // Jika username sudah digunakan, return dengan pesan error
                 return response()->json([
@@ -255,7 +313,7 @@ class EmployerApiController extends Controller
 
             $employer->save();
 
-            Redis::del("employer:all", "employer:profile:{$employerId}", "admin:detailMitra:{$employerId}");
+            Redis::del("employer:all", "employer:profile:{$employerId}", "admin:detailMitra:{$employerId}", "detail:employer:{$employerId}");
 
             return response()->json([
                 'success' => true,
@@ -273,6 +331,14 @@ class EmployerApiController extends Controller
     // Kelola Activity
     public function activities($employerId) 
     {
+        $authenticatedEmployerId = auth('employer')->user()->id_mitra;
+            if ($authenticatedEmployerId != $employerId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin.',
+                ], 403);
+            }
+
         $key = "employer:activities:{$employerId}";
         $employerActivitiesData = Redis::get($key);
 
@@ -308,6 +374,14 @@ class EmployerApiController extends Controller
 
     public function detailActivity($employerId, $activityId) 
     {
+        $authenticatedEmployerId = auth('employer')->user()->id_mitra;
+            if ($authenticatedEmployerId != $employerId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin.',
+                ], 403);
+            }
+
         $key = "detail:activity:{$employerId}:{$activityId}";
         $detailActivitiData = Redis::get($key);
 
@@ -345,6 +419,14 @@ class EmployerApiController extends Controller
     public function addActivity(Request $request, $employerId) 
     {
         try{
+            $authenticatedEmployerId = auth('employer')->user()->id_mitra;
+            if ($authenticatedEmployerId != $employerId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin.',
+                ], 403);
+            }
+
             $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json([
@@ -424,6 +506,14 @@ class EmployerApiController extends Controller
     public function editActivity(Request $request, $employerId, $activityId) 
     {
         try{
+            $authenticatedEmployerId = auth('employer')->user()->id_mitra;
+            if ($authenticatedEmployerId != $employerId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin.',
+                ], 403);
+            }
+
             $employer = Mitra::find($employerId);
             if (!$employer) {
                     return response()->json([
@@ -501,6 +591,14 @@ class EmployerApiController extends Controller
     public function deleteActivity($employerId, $activityId) 
     {
         try {
+            $authenticatedEmployerId = auth('employer')->user()->id_mitra;
+            if ($authenticatedEmployerId != $employerId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin.',
+                ], 403);
+            }
+
             $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json([
@@ -536,6 +634,14 @@ class EmployerApiController extends Controller
     public function addBenefit(Request $request, $employerId, $activityId)
     {
         try {
+            $authenticatedEmployerId = auth('employer')->user()->id_mitra;
+            if ($authenticatedEmployerId != $employerId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin.',
+                ], 403);
+            }
+
             $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json([
@@ -586,6 +692,14 @@ class EmployerApiController extends Controller
     public function deleteBenefit($employerId, $activityId, $benefitId) 
     {
         try {
+            $authenticatedEmployerId = auth('employer')->user()->id_mitra;
+            if ($authenticatedEmployerId != $employerId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin.',
+                ], 403);
+            }
+
             $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json([
@@ -642,6 +756,14 @@ class EmployerApiController extends Controller
     public function addRequirement(Request $request, $employerId, $activityId) 
     {
         try {
+            $authenticatedEmployerId = auth('employer')->user()->id_mitra;
+            if ($authenticatedEmployerId != $employerId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin.',
+                ], 403);
+            }
+
             $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json([
@@ -693,6 +815,14 @@ class EmployerApiController extends Controller
     public function deleteRequirement($employerId, $activityId, $requirementId) 
     {
         try {
+            $authenticatedEmployerId = auth('employer')->user()->id_mitra;
+            if ($authenticatedEmployerId != $employerId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin.',
+                ], 403);
+            }
+
             $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json([
@@ -748,6 +878,14 @@ class EmployerApiController extends Controller
     // Kelola Pendaftar
     public function applicants($employerId) 
     {
+        $authenticatedEmployerId = auth('employer')->user()->id_mitra;
+            if ($authenticatedEmployerId != $employerId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin.',
+                ], 403);
+            }
+
         $key="employer:applicants:{$employerId}";
         $applicantData = Redis::get($key);
 
@@ -785,6 +923,14 @@ class EmployerApiController extends Controller
     public function detailApplicant($employerId, $userId)
     {
         try {
+            $authenticatedEmployerId = auth('employer')->user()->id_mitra;
+            if ($authenticatedEmployerId != $employerId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin.',
+                ], 403);
+            }
+
             $key = "detail:applicant:{$employerId}:{$userId}";
             $detailApplicantData = Redis::get($key);
 
@@ -841,6 +987,14 @@ class EmployerApiController extends Controller
     public function updateApplicant(Request $request, $employerId, $userId, $activityId) 
     {
         try{ 
+            $authenticatedEmployerId = auth('employer')->user()->id_mitra;
+            if ($authenticatedEmployerId != $employerId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin.',
+                ], 403);
+            }
+
             $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json([
@@ -930,6 +1084,14 @@ class EmployerApiController extends Controller
 
     public function updateInterview(Request $request, $employerId, $userId, $activityId) {
         try{
+            $authenticatedEmployerId = auth('employer')->user()->id_mitra;
+            if ($authenticatedEmployerId != $employerId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin.',
+                ], 403);
+            }
+            
             $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json([
@@ -1013,6 +1175,48 @@ class EmployerApiController extends Controller
             ], 500);
         }
     }
+
+    public function logout(Request $request)
+    {
+        try {
+            // Ambil token dari header Authorization
+            $token = $request->bearerToken();
+
+            if (!$token) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Token tidak ditemukan.',
+                ], 400);
+            }
+
+            // Decode token untuk mendapatkan username
+            $payload = JWTAuth::setToken($token)->getPayload();
+            $username = $payload->get('username');
+
+            // Hapus token dari Redis
+            $redisKey = "mitra:token:$username";
+            if (Redis::exists($redisKey)) {
+                Redis::del($redisKey);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Logout berhasil. Token telah dihapus.',
+                ], 200);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Token tidak ditemukan di Redis.',
+                ], 404);
+            }
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal logout.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
 
     // INI GUNANYA UNTUK HAPUS FILE LAMA KALAU TERJADI PERUBAHAN
     private function handleFileUpload($file, $directory, $model, $attribute)
