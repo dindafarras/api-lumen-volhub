@@ -198,7 +198,7 @@ class UserApiController extends Controller
             $user = User::with('experiences', 'skills', 'pendaftars')->find($userId);
             if (!$user) {
                 return response()->json([
-                    'message' => '"Nope, we couldn’t find that ID. It’s either gone or never existed 🙄"'
+                    'message' => '"Nope, we couldnâ€™t find that ID. Itâ€™s either gone or never existed ðŸ™„"'
                 ], 404);
             }
 
@@ -218,9 +218,11 @@ class UserApiController extends Controller
         }
     }
 
-    public function editProfile(Request $request, $userId)
+    public function editProfile(Request $request)
     {
         try {
+            $userId = $request->query('userId');
+            
             $authenticatedUserId = auth()->user()->id;
             if ($authenticatedUserId != $userId) {
                 return response()->json([
@@ -234,7 +236,7 @@ class UserApiController extends Controller
             if (!$user) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Nope, we couldn’t find that ID. It’s either gone or never existed 🙄',
+                    'message' => 'Nope, we couldnâ€™t find that ID. Itâ€™s either gone or never existed ðŸ™„',
                 ], 404);
             }
 
@@ -343,9 +345,12 @@ class UserApiController extends Controller
     }
 
     // Kelola pendaftaran
-    public function applyActivity(Request $request, $userId, $idActivity) 
+    public function applyActivity(Request $request) 
     {
         try {
+            $userId = $request->query('userId');
+            $idActivity = $request->query('idActivity');
+            
             $authenticatedUserId = auth()->user()->id;
             if ($authenticatedUserId != $userId) {
                 return response()->json([
@@ -430,9 +435,11 @@ class UserApiController extends Controller
     }
 
     // Kelola Skill
-    public function addSkill(Request $request, $userId) 
+    public function addSkill(Request $request) 
     {
         try {
+            $userId = $request->query('userId');
+            
             $authenticatedUserId = auth()->user()->id;
             if ($authenticatedUserId != $userId) {
                 return response()->json([
@@ -478,9 +485,12 @@ class UserApiController extends Controller
         }
     }
 
-    public function deleteSkill($userId, $idSkill) 
+    public function deleteSkill(Request $request) 
     {
         try {
+            $userId = $request->query('userId');
+            $idSkill = $request->query('idSkill');
+            
             $authenticatedUserId = auth()->user()->id;
             if ($authenticatedUserId != $userId) {
                 return response()->json([
@@ -531,9 +541,11 @@ class UserApiController extends Controller
     }
 
     // Kelola Experience
-    public function addExperience(Request $request, $userId) 
+    public function addExperience(Request $request) 
     {
         try {
+            $userId = $request->query('userId');
+            
             $authenticatedUserId = auth()->user()->id;
             if ($authenticatedUserId != $userId) {
                 return response()->json([
@@ -605,9 +617,12 @@ class UserApiController extends Controller
         }
     }
 
-    public function editExperience(Request $request, $userId, $experienceId) 
+    public function editExperience(Request $request) 
     {
         try {
+            $userId = $request->query('userId');
+            $experienceId = $request->query('experienceId');
+            
             $authenticatedUserId = auth()->user()->id;
             if ($authenticatedUserId != $userId) {
                 return response()->json([
@@ -679,9 +694,12 @@ class UserApiController extends Controller
         }
     }
 
-    public function deleteExperience($userId, $experienceId) 
+    public function deleteExperience(Request $request) 
     {
         try {
+            $userId = $request->query('userId');
+            $experienceId = $request->query('experienceId');
+            
             $authenticatedUserId = auth()->user()->id;
             if ($authenticatedUserId != $userId) {
                 return response()->json([
@@ -770,8 +788,10 @@ class UserApiController extends Controller
         }
     }
 
-    public function detailActivity($activityId) 
+    public function detailActivity(Request $request) 
     {
+        $activityId = $request->query('activityId');
+        
         $key = "detail:acitivity:{$activityId}";
         $detailActivitiData = Redis::get($key);
 
@@ -829,8 +849,10 @@ class UserApiController extends Controller
         
     }
 
-    public function detailEmployer($employerId) 
+    public function detailEmployer(Request $request) 
     {
+        $employerId = $request->query('employerId');
+        
         $key = "detail:employer:{$employerId}";
         $detailEmployerData = Redis::get($key);
 
@@ -864,40 +886,31 @@ class UserApiController extends Controller
     public function logout(Request $request)
     {
         try {
-            // Ambil token dari header Authorization
+            // Ambil token dari header
             $token = $request->bearerToken();
-
             if (!$token) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Token tidak ditemukan.',
-                ], 400);
+                return response()->json(['message' => 'Token tidak ditemukan.'], 400);
             }
 
-            // Decode token untuk mendapatkan username
+            // Ambil payload untuk mendapatkan username
             $payload = JWTAuth::setToken($token)->getPayload();
             $username = $payload->get('username');
 
-            // Hapus token dari Redis
+            // Tentukan Redis Key berdasarkan username
             $redisKey = "user:token:$username";
+
+            // Hapus token dari Redis
             if (Redis::exists($redisKey)) {
                 Redis::del($redisKey);
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Logout berhasil. Token telah dihapus.',
-                ], 200);
-
-            } else {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Token tidak ditemukan di Redis.',
-                ], 404);
             }
+
+            // Blacklist token agar tidak bisa digunakan lagi
+            JWTAuth::invalidate($token);
+
+            return response()->json(['message' => 'Logout berhasil. Token telah dihapus.'], 200);
         } catch (\Exception $e) {
             return response()->json([
-                'success' => false,
-                'message' => 'Gagal logout.',
+                'message' => 'Terjadi kesalahan saat logout.',
                 'error' => $e->getMessage(),
             ], 500);
         }

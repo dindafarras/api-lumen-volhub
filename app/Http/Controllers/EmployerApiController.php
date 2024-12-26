@@ -200,7 +200,7 @@ class EmployerApiController extends Controller
             $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json([
-                    'message' => '"Nope, we couldn’t find that ID. It’s either gone or never existed 🙄"'
+                    'message' => '"Nope, we couldnâ€™t find that ID. Itâ€™s either gone or never existed ðŸ™„"'
                 ], 404);
             }
 
@@ -220,9 +220,11 @@ class EmployerApiController extends Controller
         }
     }
 
-    public function editProfile(Request $request, $employerId) 
+    public function editProfile(Request $request) 
     {
         try {
+            $employerId = $request->query('employerId');
+            
             $authenticatedEmployerId = auth('employer')->user()->id_mitra;
                 if ($authenticatedEmployerId != $employerId) {
                     return response()->json([
@@ -329,8 +331,10 @@ class EmployerApiController extends Controller
     }
 
     // Kelola Activity
-    public function activities($employerId) 
+    public function activities(Request $request) 
     {
+        $employerId = $request->query('employerId');
+        
         $authenticatedEmployerId = auth('employer')->user()->id_mitra;
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
@@ -348,7 +352,7 @@ class EmployerApiController extends Controller
             if (!$employer) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Nope, we couldn’t find that ID. It’s either gone or never existed 🙄',
+                    'message' => 'Nope, we couldnâ€™t find that ID. Itâ€™s either gone or never existed ðŸ™„',
                 ], 404);
             }
 
@@ -372,8 +376,11 @@ class EmployerApiController extends Controller
         }
     }
 
-    public function detailActivity($employerId, $activityId) 
+    public function detailActivity(Request $request) 
     {
+        $employerId = $request->query('employerId');
+        $activityId = $request->query('activityId');
+        
         $authenticatedEmployerId = auth('employer')->user()->id_mitra;
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
@@ -392,7 +399,7 @@ class EmployerApiController extends Controller
             if (!$employer) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Nope, we couldn’t find that ID. It’s either gone or never existed 🙄',
+                    'message' => 'Nope, we couldnâ€™t find that ID. Itâ€™s either gone or never existed ðŸ™„',
                 ], 404);
             }
 
@@ -416,9 +423,11 @@ class EmployerApiController extends Controller
         }
     }
 
-    public function addActivity(Request $request, $employerId) 
+    public function addActivity(Request $request) 
     {
         try{
+            $employerId = $request->query('employerId');
+            
             $authenticatedEmployerId = auth('employer')->user()->id_mitra;
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
@@ -503,9 +512,12 @@ class EmployerApiController extends Controller
         }
     }
 
-    public function editActivity(Request $request, $employerId, $activityId) 
+    public function editActivity(Request $request) 
     {
         try{
+            $employerId = $request->query('employerId');
+            $activityId = $request->query('activityId');
+            
             $authenticatedEmployerId = auth('employer')->user()->id_mitra;
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
@@ -528,12 +540,7 @@ class EmployerApiController extends Controller
                 ], 404);
             }
 
-            $category = Kategori::find($request->id_kategori);
-            if (!$category) {
-                return response()->json([
-                    'message' => 'Kategori tidak ditemukan.'
-                ], 404);
-            }
+            
 
             $validator = Validator::make($request->all(), [
                 'id_kategori' => 'nullable',
@@ -588,9 +595,12 @@ class EmployerApiController extends Controller
         }
     }
 
-    public function deleteActivity($employerId, $activityId) 
+    public function deleteActivity(Request $request) 
     {
         try {
+            $employerId = $request->query('employerId');
+            $activityId = $request->query('activityId');
+            
             $authenticatedEmployerId = auth('employer')->user()->id_mitra;
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
@@ -631,9 +641,12 @@ class EmployerApiController extends Controller
     }
 
     // Kelola Benefit
-    public function addBenefit(Request $request, $employerId, $activityId)
+    public function addBenefit(Request $request)
     {
         try {
+            $employerId = $request->query('employerId');
+            $activityId = $request->query('activityId');
+            
             $authenticatedEmployerId = auth('employer')->user()->id_mitra;
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
@@ -689,9 +702,13 @@ class EmployerApiController extends Controller
         }
     }
 
-    public function deleteBenefit($employerId, $activityId, $benefitId) 
+    public function deleteBenefit(Request $request) 
     {
         try {
+            $employerId = $request->query('employerId');
+            $activityId = $request->query('activityId');
+            $benefitId = $request->query('benefitId');
+
             $authenticatedEmployerId = auth('employer')->user()->id_mitra;
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
@@ -753,9 +770,12 @@ class EmployerApiController extends Controller
     }
 
     // Kelola Requirement
-    public function addRequirement(Request $request, $employerId, $activityId) 
+    public function addRequirement(Request $request) 
     {
         try {
+            $employerId = $request->query('employerId');
+            $activityId = $request->query('activityId');
+            
             $authenticatedEmployerId = auth('employer')->user()->id_mitra;
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
@@ -812,9 +832,13 @@ class EmployerApiController extends Controller
         }
     }
 
-    public function deleteRequirement($employerId, $activityId, $requirementId) 
+    public function deleteRequirement(Request $request) 
     {
         try {
+            $employerId = $request->query('employerId');
+            $activityId = $request->query('activityId');
+            $requirementId = $request->query('requirementId');
+
             $authenticatedEmployerId = auth('employer')->user()->id_mitra;
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
@@ -876,8 +900,10 @@ class EmployerApiController extends Controller
     }
 
     // Kelola Pendaftar
-    public function applicants($employerId) 
+    public function applicants(Request $request) 
     {
+        $employerId = $request->query('employerId');
+        
         $authenticatedEmployerId = auth('employer')->user()->id_mitra;
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
@@ -894,7 +920,7 @@ class EmployerApiController extends Controller
 
             if(!$employer) {
                 return response()->json([
-                    'message' => '"Nope, we couldn’t find that ID. It’s either gone or never existed 🙄"'
+                    'message' => '"Nope, we couldnâ€™t find that ID. Itâ€™s either gone or never existed ðŸ™„"'
                 ], 404);
             }
 
@@ -920,8 +946,11 @@ class EmployerApiController extends Controller
         }
     }
 
-    public function detailApplicant($employerId, $userId)
+    public function detailApplicant(Request $request)
     {
+        $employerId = $request->query('employerId');
+        $userId = $request->query('userId');
+        
         try {
             $authenticatedEmployerId = auth('employer')->user()->id_mitra;
             if ($authenticatedEmployerId != $employerId) {
@@ -984,9 +1013,13 @@ class EmployerApiController extends Controller
         }
     }
 
-    public function updateApplicant(Request $request, $employerId, $userId, $activityId) 
+    public function updateApplicant(Request $request) 
     {
         try{ 
+            $employerId = $request->query('employerId');
+            $userId = $request->query('userId');
+            $activityId = $request->query('activityId');
+
             $authenticatedEmployerId = auth('employer')->user()->id_mitra;
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
@@ -1082,8 +1115,12 @@ class EmployerApiController extends Controller
         }
     }
 
-    public function updateInterview(Request $request, $employerId, $userId, $activityId) {
+    public function updateInterview(Request $request) {
         try{
+            $employerId = $request->query('employerId');
+            $userId = $request->query('userId');
+            $activityId = $request->query('activityId');
+            
             $authenticatedEmployerId = auth('employer')->user()->id_mitra;
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([

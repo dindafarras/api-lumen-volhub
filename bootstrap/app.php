@@ -80,6 +80,9 @@ $app->configure('cache');
 
 $app->routeMiddleware([
     'auth' => App\Http\Middleware\Authenticate::class,
+    'jwt.auth.user' => App\Http\Middleware\JwtAuthUser::class,
+    'jwt.auth.admin' => App\Http\Middleware\JwtAuthAdmin::class,
+    'jwt.auth.employer' => App\Http\Middleware\JwtAuthEmployer::class,
 ]);
 
 /*

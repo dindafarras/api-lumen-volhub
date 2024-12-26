@@ -123,7 +123,7 @@ class AdminApiController extends Controller
             $admin = Admin::find($adminId); // Data dari MySQL
             if (!$admin) {
                 return response()->json([
-                    'message' => '"Nope, we couldn’t find that ID. It’s either gone or never existed 🙄"'
+                    'message' => '"Nope, we couldnâ€™t find that ID. Itâ€™s either gone or never existed ðŸ™„"'
                 ], 404);
             }
     
@@ -144,8 +144,10 @@ class AdminApiController extends Controller
         }
     }
     
-    public function editProfile(Request $request, $idAdmin)
+    public function editProfile(Request $request)
     {
+        $idAdmin = $request->query('idAdmin');
+        
         try {
             $authenticatedidAdmin = auth('admin')->user()->id;
             if ($authenticatedidAdmin != $idAdmin) {
@@ -160,7 +162,7 @@ class AdminApiController extends Controller
             if (!$admin) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Nope, we couldn’t find that ID. It’s either gone or never existed 🙄',
+                    'message' => 'Nope, we couldnâ€™t find that ID. Itâ€™s either gone or never existed ðŸ™„',
                 ], 404);
             }
 
@@ -285,9 +287,11 @@ class AdminApiController extends Controller
         }
     }
 
-    public function editCategory (Request $request, $idCategory) 
+    public function editCategory (Request $request) 
     {
         try {
+            $idCategory = $request->query('idCategory');
+            
             $category = Kategori::find($idCategory);
 
             if (!$category) {
@@ -327,9 +331,11 @@ class AdminApiController extends Controller
         }
     }
 
-    public function deleteCategory($idCategory) 
+    public function deleteCategory(Request $request) 
     {
         try {
+            $idCategory = $request->query('idCategory');
+            
             $category = Kategori::find($idCategory);
 
             if (!$category) {
@@ -393,9 +399,11 @@ class AdminApiController extends Controller
         }
     }
 
-    public function detailUser($userId)
+    public function detailUser(Request $request)
     {
         try{
+            $userId = $request->query('userId');
+            
             $key = "admin:DetailUser:{$userId}";
             $detailUserData = Redis::get($key);
 
@@ -466,9 +474,11 @@ class AdminApiController extends Controller
         }
     }
 
-    public function detailMitra($employerId)
+    public function detailMitra(Request $request)
     {
         try {
+            $employerId = $request->query('employerId');
+            
             $key = "admin:detailMitra:{$employerId}";
             $detailMitraData = Redis::get($key);
 
@@ -504,39 +514,31 @@ class AdminApiController extends Controller
     public function logout(Request $request)
     {
         try {
-            // Ambil token dari header Authorization
+            // Ambil token dari header
             $token = $request->bearerToken();
-
             if (!$token) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Token tidak ditemukan.',
-                ], 400);
+                return response()->json(['message' => 'Token tidak ditemukan.'], 400);
             }
 
-            // Decode token untuk mendapatkan username
+            // Ambil payload untuk mendapatkan username
             $payload = JWTAuth::setToken($token)->getPayload();
             $username = $payload->get('username');
 
-            // Hapus token dari Redis
+            // Tentukan Redis Key berdasarkan username
             $redisKey = "admin:token:$username";
+
+            // Hapus token dari Redis
             if (Redis::exists($redisKey)) {
                 Redis::del($redisKey);
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Logout berhasil. Token telah dihapus.',
-                ], 200);
-            } else {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Token tidak ditemukan di Redis.',
-                ], 404);
             }
+
+            // Blacklist token agar tidak bisa digunakan lagi
+            JWTAuth::invalidate($token);
+
+            return response()->json(['message' => 'Logout berhasil. Token telah dihapus.'], 200);
         } catch (\Exception $e) {
             return response()->json([
-                'success' => false,
-                'message' => 'Gagal logout.',
+                'message' => 'Terjadi kesalahan saat logout.',
                 'error' => $e->getMessage(),
             ], 500);
         }

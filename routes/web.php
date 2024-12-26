@@ -1,6 +1,5 @@
 <?php
 
-
 $router->group([
     'prefix' => 'user',
 ], function () use ($router) {
@@ -12,30 +11,30 @@ $router->group([
 
     //Activities
     $router->get('activities', 'UserApiController@activities');
-    $router->get('detailActivity/{activityId}', 'UserApiController@detailActivity');
+    $router->get('detailActivity', 'UserApiController@detailActivity');
 
     //Employers
     $router->get('employers', 'UserApiController@employers');
-    $router->get('detailEmployer/{employerId}', 'UserApiController@detailEmployer');
+    $router->get('detailEmployer', 'UserApiController@detailEmployer');
 
     $router->group([
-        'middleware' => 'auth:user',
+        'middleware' => 'jwt.auth.user',
     ], function () use ($router) {
         // Profile user
         $router->get('profile', 'UserApiController@profile');
-        $router->put('editProfile/{userId}', 'UserApiController@editProfile');
+        $router->put('editProfile', 'UserApiController@editProfile');
 
         // Melakukan pendaftaran
-        $router->post('apply/{userId}/{idActivity}', 'UserApiController@applyActivity');
+        $router->post('apply', 'UserApiController@applyActivity');
     
         // Kelola Skill
-        $router->post('addSkill/{userId}', 'UserApiController@addSkill');
-        $router->delete('deleteSkill/{userId}/{idSkill}', 'UserApiController@deleteSkill');
+        $router->post('addSkill', 'UserApiController@addSkill');
+        $router->delete('deleteSkill', 'UserApiController@deleteSkill');
 
         // Kelola Experience
-        $router->post('addExperience/{userId}', 'UserApiController@addExperience');
-        $router->put('editExperience/{userId}/{experienceId}', 'UserApiController@editExperience');
-        $router->delete('deleteExperience/{userId}/{experienceId}', 'UserApiController@deleteExperience');
+        $router->post('addExperience', 'UserApiController@addExperience');
+        $router->put('editExperience', 'UserApiController@editExperience');
+        $router->delete('deleteExperience', 'UserApiController@deleteExperience');
 
         //Logout
         $router->post('logout', 'UserApiController@logout');
@@ -48,25 +47,25 @@ $router->group([
     $router->post('login', 'AdminApiController@loginAdmin');
 
     $router->group([
-        'middleware' => 'auth:admin'
+        'middleware' => 'jwt.auth.admin',
     ], function () use ($router) {
         // Profile admin
         $router->get('profile', 'AdminApiController@profile');
-        $router->put('editProfile/{idAdmin}', 'AdminApiController@editProfile');
+        $router->put('editProfile', 'AdminApiController@editProfile');
         
         // Kelola Kategori
         $router->get('category', 'AdminApiController@category');
         $router->post('addCategory', 'AdminApiController@addCategory');
-        $router->put('editCategory/{idCategory}', 'AdminApiController@editCategory');
-        $router->delete('deleteCategory/{idCategory}', 'AdminApiController@deleteCategory');
+        $router->put('editCategory', 'AdminApiController@editCategory');
+        $router->delete('deleteCategory', 'AdminApiController@deleteCategory');
 
         // Kelola User
         $router->get('user', 'AdminApiController@user');
-        $router->get('detailUser/{userId}', 'AdminApiController@detailUser');
+        $router->get('detailUser', 'AdminApiController@detailUser');
 
         // Kelola Mitra
         $router->get('mitra', 'AdminApiController@mitra');
-        $router->get('detailMitra/{employerId}', 'AdminApiController@detailMitra');
+        $router->get('detailMitra', 'AdminApiController@detailMitra');
 
         //Logout
         $router->post('logout', 'AdminApiController@logout');
@@ -85,33 +84,33 @@ $router->group([
     $router->post('registrasi', 'EmployerApiController@registrasi');
 
     $router->group([
-        'middleware' => 'auth:employer',
+        'middleware' => 'jwt.auth.employer',
     ], function () use ($router) {
         // Profile Employer
         $router->get('profile', 'EmployerApiController@profile');
-        $router->put('editProfile/{employerId}', 'EmployerApiController@editProfile');
+        $router->put('editProfile', 'EmployerApiController@editProfile');
 
         // Kelola Activity
-        $router->get('activities/{employerId}', 'EmployerApiController@activities');
-        $router->get('detailActivity/{employerId}/{activityId}', 'EmployerApiController@detailActivity');
-        $router->post('addActivity/{employerId}', 'EmployerApiController@addActivity');
-        $router->put('editActivity/{employerId}/{activityId}', 'EmployerApiController@editActivity');
-        $router->delete('deleteActivity/{employerId}/{activityId}', 'EmployerApiController@deleteActivity');
+        $router->get('activities', 'EmployerApiController@activities');
+        $router->get('detailActivity', 'EmployerApiController@detailActivity');
+        $router->post('addActivity', 'EmployerApiController@addActivity');
+        $router->put('editActivity', 'EmployerApiController@editActivity');
+        $router->delete('deleteActivity', 'EmployerApiController@deleteActivity');
 
         // Kelola Benefit
-        $router->post('addBenefit/{employerId}/{activityId}', 'EmployerApiController@addBenefit');
-        $router->delete('deleteBenefit/{employerId}/{activityId}/{idBenefit}', 'EmployerApiController@deleteBenefit');
+        $router->post('addBenefit', 'EmployerApiController@addBenefit');
+        $router->delete('deleteBenefit', 'EmployerApiController@deleteBenefit');
 
         // Kelola Requirement
-        $router->post('addRequirement/{employerId}/{activityId}', 'EmployerApiController@addRequirement');
-        $router->delete('deleteRequirement/{employerId}/{activityId}/{idRequirement}', 'EmployerApiController@deleteRequirement');
+        $router->post('addRequirement', 'EmployerApiController@addRequirement');
+        $router->delete('deleteRequirement', 'EmployerApiController@deleteRequirement');
 
         // Kelola Pendaftar
-        $router->get('applicants/{employerId}', 'EmployerApiController@applicants');
-        $router->get('detailApplicant/{employerId}/{userId}', 'EmployerApiController@detailApplicant');
+        $router->get('applicants', 'EmployerApiController@applicants');
+        $router->get('detailApplicant', 'EmployerApiController@detailApplicant');
 
-        $router->put('updateApplicant/{employerId}/{userId}/{activityId}', 'EmployerApiController@updateApplicant');
-        $router->put('updateInterview/{employerId}/{userId}/{activityId}', 'EmployerApiController@updateInterview');
+        $router->put('updateApplicant', 'EmployerApiController@updateApplicant');
+        $router->put('updateInterview', 'EmployerApiController@updateInterview');
 
         //Logout
         $router->post('logout', 'EmployerApiController@logout');
