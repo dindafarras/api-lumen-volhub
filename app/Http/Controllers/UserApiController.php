@@ -47,7 +47,7 @@ class UserApiController extends Controller
             $ttl = Redis::ttl($blockKey);
             return response()->json([
                 'success' => false,
-                'message' => "Terlalu banyak percobaan login. Coba lagi dalam $ttl detik.",
+                'message' => "Too many login attempts. Please try again in $ttl seconds",
             ], 429);
         }
 
@@ -57,10 +57,22 @@ class UserApiController extends Controller
             if (Redis::exists($redisKey)) {
                 $token = Redis::get($redisKey);
 
+                $user = User::where('username', $username)->first();
+                if (!$user) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'User not found',
+                    ], 404);
+                }
                 return response()->json([
                     'success' => true,
-                    'message' => 'Login berhasil (token diambil dari Redis)',
+                    'message' => 'Login successful (Redis)',
                     'token' => $token,
+                    'data' => [
+                        'id' => $user->id, // Ambil ID user dari model
+                        'username' => $user->username,
+                        'nama_user' => $user->nama_user
+                    ]
                 ], 200);
             }
 
@@ -76,13 +88,13 @@ class UserApiController extends Controller
                     Redis::del($attemptKey);
                     return response()->json([
                         'success' => false,
-                        'message' => 'Terlalu banyak percobaan login. Anda diblokir selama 5 menit.',
+                        'message' => '"Too many login attempts. You are blocked for 5 minutes',
                     ], 429);
                 }
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Login gagal, username atau password salah.',
+                    'message' => 'Login failed, incorrect username or password',
                     'attempts_left' => 5 - $attempts,
                 ], 401);
             }
@@ -98,13 +110,18 @@ class UserApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Login berhasil (token baru dibuat)',
+                'message' => 'Login successful (new token created)',
                 'token' => $token,
+                'data' => [
+                    'id' => $user->id, // Ambil ID user dari model
+                    'username' => $user->username,
+                    'nama_user' => $user->nama_user
+                ]
             ], 200);
         } catch (JWTException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal membuat token',
+                'message' => 'Failed to create token',
                 'error' => $e->getMessage(),
             ], 500);
         }
@@ -132,18 +149,18 @@ class UserApiController extends Controller
                     'regex:/^[0-9]{10,15}$/',
                 ]
             ], [
-                'nama_user.required' => 'Nama User wajib diisi.',
-                'nama_user.max' => 'Nama User tidak boleh lebih dari 50 karakter.',
-                'username.required' => 'Username wajib diisi.',
-                'username.max' => 'Username tidak boleh lebih dari 50 karakter.',
-                'email_user.required' => 'Email user wajib diisi.',
-                'email_user.email' => 'Format email tidak valid.',
-                'password.required' => 'Password wajib diisi',
-                'password.min' => 'Password harus memiliki minimal 8 karakter.',
-                'password.max' => 'Password tidak boleh lebih dari 255 karakter.',
-                'password.regex' => 'Password harus mengandung setidaknya satu huruf kapital, satu angka, dan satu simbol.',
-                'nomor_telephone.required' => 'Nomor telephone wajib diisi.',
-                'nomor_telephone.regex' => 'Nomor telephone harus berupa angka dan memiliki panjang 10-15 digit.'
+                'nama_user.required' => "Volunteer's name is required",
+                'nama_user.max' => "Volunteer's name cannot be more than 50 characters",
+                'username.required' => 'Username is required.',
+                'username.max' => 'Username cannot be more than 50 characters',
+                'email_user.required' => 'Email is required',
+                'email_user.email' => 'Invalid email format',
+                'password.required' => 'Password is required',
+                'password.min' => 'Password must be at least 8 characters long',
+                'password.max' => 'Password cannot be more than 255 characters',
+                'password.regex' => 'Password must contain at least one uppercase letter, one number, and one symbol',
+                'nomor_telephone.required' => 'Phone number is required',
+                'nomor_telephone.regex' => 'Phone number must be numeric and between 10 to 15 digits long'
             ]);
 
             if ($validator->fails()) {
@@ -164,7 +181,8 @@ class UserApiController extends Controller
             if ($existing_username) {
                 // Jika username sudah digunakan, return dengan pesan error
                 return response()->json([
-                    'message' => 'Username sudah digunakan',
+                    'success' => false,
+                    'message' => 'Username is already taken',
                     'status' => 'error'
                 ], 400); // Menggunakan status kode 400 untuk menandakan adanya kesalahan validasi
             }
@@ -175,12 +193,13 @@ class UserApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Registrasi Berhasil',
+                'message' => 'Registration successful',
+                'data' => $registrasi
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal melakukan registrasi',
+                'message' => 'Registration failed',
                 'error'=>$e->getMessage() 
             ], 500);
         }
@@ -198,7 +217,8 @@ class UserApiController extends Controller
             $user = User::with('experiences', 'skills', 'pendaftars')->find($userId);
             if (!$user) {
                 return response()->json([
-                    'message' => '"Nope, we couldnâ€™t find that ID. Itâ€™s either gone or never existed ðŸ™„"'
+                    'success' => false,
+                    'message' => "Nope, we couldn't find that ID. It's either gone or never existed"
                 ], 404);
             }
 
@@ -206,13 +226,14 @@ class UserApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Data user berhasil diambil dari database',
+                'message' => 'The volunteer data has been successfully retrieved',
                 'data' => $user
             ]);
         } else {
             $user = json_decode($userData, true);
             return response()->json([
-                'message' => 'Data User masih ada di Redis',
+                'success' => true,
+                'message' => 'The volunteer data has been successfully retrieved (Redis)',
                 'data' => $user
             ], 200);
         }
@@ -227,7 +248,7 @@ class UserApiController extends Controller
             if ($authenticatedUserId != $userId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki izin untuk mengedit profil ini.',
+                    'message' => 'You do not have permission',
                 ], 403);
             }
 
@@ -236,7 +257,7 @@ class UserApiController extends Controller
             if (!$user) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Nope, we couldnâ€™t find that ID. Itâ€™s either gone or never existed ðŸ™„',
+                    'message' => "Nope, we couldn't find that ID. It's either gone or never existed",
                 ], 404);
             }
 
@@ -250,39 +271,37 @@ class UserApiController extends Controller
                 'domisili' => 'nullable|string|max:255',
                 'deskripsi' => 'nullable|string',
                 'bio' => 'nullable|string',
-                'usia' => 'nullable|integer|min:1|max:120',
+                'usia' => 'nullable|integer',
                 'instagram' => 'nullable|url',
                 'linkedIn' => 'nullable|url',
                 'password' => 'nullable|min:8|max:255|regex:/[A-Z]/|regex:/[0-9]/|regex:/[\W_]/',
                 'cv' => 'nullable|file|mimes:pdf|max:2048',
                 'foto_profile' => 'nullable|image|mimes:jpg,jpeg,png|max:2048'
             ], [
-                'username.max' => 'Username tidak boleh lebih dari 50 karakter.',
-                'email_user.email' => 'Format email tidak valid.',
-                'nama_user.max' => 'Nama user tidak boleh lebih dari 50 karakter',
-                'nomor_telephone.required' => 'Nomor telephone wajib diisi.',
-                'nomor_telephone.regex' => 'Nomor telephone harus berupa angka dan memiliki panjang 10-15 digit.',
-                'pendidikan_terakhir.in' => 'Pendidikan terakhir tidak valid.',
-                'gender.in' => 'Gender tidak valid.',
-                'usia.integer' => 'Usia harus berupa angka.',
-                'usia.min' => 'Usia tidak boleh kurang dari 1 tahun.',
-                'usia.max' => 'Usia tidak boleh lebih dari 120 tahun.',
-                'instagram.url' => 'URL Instagram tidak valid.',
-                'linkedIn.url' => 'URL LinkedIn tidak valid.',
-                'password.min' => 'Password harus memiliki minimal 8 karakter.',
-                'password.max' => 'Password tidak boleh lebih dari 255 karakter.',
-                'password.regex' => 'Password harus mengandung setidaknya satu huruf kapital, satu angka, dan satu simbol.',
-                'cv.file' => 'CV harus berupa file.',
-                'cv.mimes' => 'CV harus berupa file PDF.',
-                'cv.max' => 'Ukuran CV tidak boleh lebih dari 2MB.',
-                'foto_profile.image' => 'Foto profil harus berupa gambar.',
-                'foto_profile.mimes' => 'Foto profil harus berupa file JPG, JPEG, atau PNG.',
-                'foto_profile.max' => 'Ukuran foto profil tidak boleh lebih dari 2MB.'
+                'username.max' => 'Username cannot be more than 50 characters',
+                'email_user.email' => 'Invalid email format',
+                'nama_user.max' => "Volunteer's name cannot be more than 50 characters",
+                'nomor_telephone.regex' => 'Phone number must be numeric and between 10 to 15 digits long',
+                'pendidikan_terakhir.in' => 'Latest education is not valid',
+                'gender.in' => 'Gender is not valid',
+                'usia.integer' => 'Age must be a number',
+                'instagram.url' => 'Instagram URL is not valid',
+                'linkedIn.url' => 'LinkedIn URL is not valid',
+                'password.min' => 'Password must be at least 8 characters long',
+                'password.max' => 'Password cannot be more than 255 characters',
+                'password.regex' => 'Password must contain at least one uppercase letter, one number, and one symbol',
+                'cv.file' => 'CV must be a file',
+                'cv.mimes' => 'CV must be a PDF file.',
+                'cv.max' => 'CV size must not exceed 2MB',
+                'foto_profile.image' => 'Profile photo must be an image',
+                'foto_profile.mimes' => 'Profile photo must be a JPG, JPEG, or PNG file',
+                'foto_profile.max' => 'Profile photo size must not exceed 2MB'
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
-                    'message' => 'Validasi gagal',
+                    'success' => false,
+                    'message' => 'Validation failed',
                     'errors' => $validator->errors()
                 ], 400);
             }
@@ -293,7 +312,8 @@ class UserApiController extends Controller
             if ($existing_username) {
                 // Jika username sudah digunakan, return dengan pesan error
                 return response()->json([
-                    'message' => 'Username sudah digunakan',
+                    'success' => false,
+                    'message' => 'Username is already taken',
                     'status' => 'error'
                 ], 400); // Menggunakan status kode 400 untuk menandakan adanya kesalahan validasi
             }
@@ -332,13 +352,14 @@ class UserApiController extends Controller
             Redis::del("user:all", "user:profile:{$userId}", "admin:DetailUser:{$userId}");
 
             return response()->json([
-                'message' => 'Berhasil edit User',
+                'success' => true,
+                'message' => 'Successfully edited the volunteer data',
                 'data'=>$user
             ], 200);
         } catch (\Exception $e){
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal edit User',
+                'message' => 'Failed to edit the volunteer data',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -355,7 +376,7 @@ class UserApiController extends Controller
             if ($authenticatedUserId != $userId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki izin untuk mengedit profil ini.',
+                    'message' => 'You do not have permission',
                 ], 403);
             }
 
@@ -365,26 +386,29 @@ class UserApiController extends Controller
             // Validasi apakah user dan kegiatan ditemukan
             if (!$user) {
                 return response()->json([
-                    'message' => 'User tidak ditemukan.',
+                    'success' => false,
+                    'message' => 'User not found',
                 ], 404);
             }
 
             if (!$activity) {
                 return response()->json([
-                    'message' => 'Kegiatan tidak ditemukan.',
+                    'success' => false,
+                    'message' => 'Activity not found',
                 ], 404);
             }
 
             $validator = Validator::make($request->all(), [
                 'motivasi' => 'required|max:255',
             ], [
-                'motivasi.required' => 'Motivasi wajib diisi.',
-                'motivasi.max' => 'Motivasi tidak boleh lebih dari 255 karakter'              
+                'motivasi.required' => 'Motivation is required',
+                'motivasi.max' => 'Motivation cannot be more than 255 characters'              
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
-                    'message' => 'Validasi gagal',
+                    'success' => false,
+                    'message' => 'Validation failed',
                     'errors' => $validator->errors()
                 ], 400);
             }
@@ -402,7 +426,8 @@ class UserApiController extends Controller
 
             if ($existingApplication) {
                 return response()->json([
-                    'message' => 'Anda sudah melakukan pendaftaran pada kegiatan ini'
+                    'success' => false,
+                    'message' => 'You already apply for this activity',
                 ], 400);
             }
 
@@ -413,7 +438,8 @@ class UserApiController extends Controller
             } else if (!$user->cv) {
                 // Jika user belum memiliki CV sebelumnya
                 return response()->json([
-                    'message' => 'Anda belum memiliki CV. Silakan unggah CV baru.',
+                    'success' => false,
+                    'message' => 'You do not have a CV yet. Please upload a new CV',
                 ], 400);
             }
 
@@ -423,12 +449,12 @@ class UserApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Pendaftaran behasil dilakukan',
+                'message' => 'Registration was successful',
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal melakukan pendaftaran',
+                'message' => 'Failed to complete the registration',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -444,24 +470,28 @@ class UserApiController extends Controller
             if ($authenticatedUserId != $userId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki izin untuk mengedit profil ini.',
+                    'message' => 'You do not have permission',
                 ], 403);
             }
             $user = User::find($userId);
 
             if (!$user) {
-                return response()->json(['message' => 'User tidak ditemukan'], 404);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User not found'
+                ], 404);
             }
 
             $validator = Validator::make($request->all(), [
                 'nama_skill' => 'max:30',
             ], [
-                'nama_skill.max' => 'Skill tidak boleh lebih dari 30 karakter'              
+                'nama_skill.max' => 'Skill cannot more than 30 characters'              
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
-                    'message' => 'Validasi gagal',
+                    'success' => false,
+                    'message' => 'Validation failed',
                     'errors' => $validator->errors()
                 ], 400);
             }
@@ -473,13 +503,13 @@ class UserApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Berhasil menambahkan skill',
+                'message' => 'Successfully added skill',
             ], 200);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menambahkan skill',
+                'message' => 'Failed to add skill',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -495,18 +525,24 @@ class UserApiController extends Controller
             if ($authenticatedUserId != $userId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki izin untuk mengedit profil ini.',
+                    'message' => 'You do not have permission',
                 ], 403);
             }
 
             $user = User::find($userId);
             if (!$user) {
-                return response()->json(['message' => 'User tidak ditemukan'], 404);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User not found'
+                ], 404);
             }
 
             $skill = $user->skills()->find($idSkill);
             if (!$skill) {
-                return response()->json(['message' => 'Skill tidak ditemukan untuk user ini'], 404);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Skill not found in this user'
+                ], 404);
             }
 
             // Hapus hubungan skill dengan user
@@ -518,7 +554,7 @@ class UserApiController extends Controller
             if ($otherUsers > 0) {
                 return response()->json([
                     'success' => true,
-                    'message' => 'Skill dihapus dari user ini'
+                    'message' => 'Skill removed from this user'
                 ], 200);
             }
 
@@ -528,13 +564,13 @@ class UserApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Skill berhasil dihapus'
+                'message' => 'Skill successfully removed'
             ], 200);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus skill',
+                'message' => 'Failed to remove skill',
                 'error' => $e->getMessage()
             ], 500);
         } 
@@ -550,14 +586,17 @@ class UserApiController extends Controller
             if ($authenticatedUserId != $userId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki izin untuk mengedit profil ini.',
+                    'message' => 'You do not have permission',
                 ], 403);
             }
 
             $user = User::find($userId);
 
             if (!$user) {
-                return response()->json(['message' => 'User tidak ditemukan'], 404);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User not found'
+                ], 404);
             }
 
             $validator = Validator::make($request->all(), [
@@ -568,24 +607,24 @@ class UserApiController extends Controller
                 'deskripsi' => 'required|max:255',
                 'mitra' => 'required|max:50',
             ], [
-                'judul_kegiatan.required' => 'Nama kegiatan wajib diisi',
-                'judul_kegiatan.max' => 'Nama kegiatan tidak boleh lebih dari 30 karakter',
-                'lokasi_kegiatan.required' => 'Lokasi kegiatan wajib diisi',
-                'lokasi_kegiatan.max' => 'Lokasi kegiatan tidak boleh lebih dari 30 karakter',
-                'tgl_mulai.required' => 'Tanggal mulai kegiatan wajib diisi',
-                'tgl_mulai.date' => 'Tanggal mulai kegiatan diisi dengan format YYYY-MM-DD',
-                'tgl_selesai.required' => 'Tanggal selesai kegiatan wajib diisi',
-                'tgl_selesai.date' => 'Tanggal selesai kegiatan diisi dengan format YYYY-MM-DD',
-                'deskripsi.required' => 'Deskripsi kegiatan wajib diisi',
-                'deskripsi.max' => 'Deskripsi kegiatan tidak boleh lebih dari 255 karakter',
-                'mitra.required' => 'Mitra kegiatan wajib diisi',
-                'mitra.max' => 'Mitra kegiatan tidak boleh lebih dari 50 karakter',             
+                'judul_kegiatan.required' => 'Activity name is required',
+                'judul_kegiatan.max' => 'Activity name cannot be more than 30 character',
+                'lokasi_kegiatan.required' => 'Activity location is required',
+                'lokasi_kegiatan.max' => 'Activity location cannot be more than 30 characters',
+                'tgl_mulai.required' => 'Start date of activity is required',
+                'tgl_mulai.date' => 'Start date of activity must be in YYYY-MM-DD format',
+                'tgl_selesai.required' => 'End date of activity is required',
+                'tgl_selesai.date' => 'End date of activity must be in YYYY-MM-DD format',
+                'deskripsi.required' => 'Description is required',
+                'deskripsi.max' => 'Description cannot be more than 255 characters',
+                'mitra.required' => "Company's name is required",
+                'mitra.max' => "Company's name cannot be more than 50 characters",             
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Validasi gagal',
+                    'message' => 'Validation failed',
                     'errors' => $validator->errors()
                 ], 400);
             }
@@ -605,13 +644,13 @@ class UserApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Experience berhasil ditambahkan',
+                'message' => 'Experience successfully added',
             ], 200);
 
         } catch (\Exception $e) {
             return response()->json ([
                 'success' => false,
-                'message' => 'Gagal menambahkan experience baru',
+                'message' => 'Failed to add new experience',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -627,21 +666,25 @@ class UserApiController extends Controller
             if ($authenticatedUserId != $userId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki izin untuk mengedit profil ini.',
+                    'message' => 'You do not have permission',
                 ], 403);
             }
 
             $user = User::find($userId);
 
             if (!$user) {
-                return response()->json(['message' => 'User tidak ditemukan'], 404);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User not found'
+                ], 404);
             }
 
             $experience = $user->experiences()->find($experienceId);
 
             if (!$experience) {
                 return response()->json([
-                    'message' => 'Experience tidak ditemukan untuk user ini'
+                    'success' => false,
+                    'message' => 'Experience not found for this user'
                 ], 404);
             }
 
@@ -653,12 +696,12 @@ class UserApiController extends Controller
                 'deskripsi' => 'nullable|max:255',
                 'mitra' => 'nullable|max:50',
             ], [
-                'judul_kegiatan.max' => 'Nama kegiatan tidak boleh lebih dari 30 karakter',
-                'lokasi_kegiatan.max' => 'Lokasi kegiatan tidak boleh lebih dari 30 karakter',
-                'tgl_mulai.date' => 'Tanggal mulai kegiatan diisi dengan format YYYY-MM-DD',
-                'tgl_selesai.date' => 'Tanggal selesai kegiatan diisi dengan format YYYY-MM-DD',
-                'deskripsi.max' => 'Deskripsi kegiatan tidak boleh lebih dari 255 karakter',
-                'mitra.max' => 'Mitra kegiatan tidak boleh lebih dari 50 karakter',             
+                'judul_kegiatan.max' => 'Activity name cannot be more than 30 characters',
+                'lokasi_kegiatan.max' => 'Activity location cannot be more than 30 characters',
+                'tgl_mulai.date' => 'Start date of activity must be in YYYY-MM-DD format',
+                'tgl_selesai.date' => 'End date of activity must be in YYYY-MM-DD format',
+                'deskripsi.max' => 'Description cannot be more than 255 characters',
+                'mitra.max' => "Company's name cannot be more than 50 characters",             
             ]);
 
             if ($validator->fails()) {
@@ -683,12 +726,12 @@ class UserApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Experience berhasil diperbarui',
+                'message' => 'Experience successfully updated',
             ], 201);
         } catch (\Exception $e) {
             return response()->json ([
                 'success' => false,
-                'message' => 'Gagal menambahkan experience baru',
+                'message' => 'Failed to update experience',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -704,21 +747,25 @@ class UserApiController extends Controller
             if ($authenticatedUserId != $userId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki izin untuk mengedit profil ini.',
+                    'message' => 'You do not have permission',
                 ], 403);
             }
 
             $user = User::find($userId);
 
             if (!$user) {
-                return response()->json(['message' => 'User tidak ditemukan'], 404);
+                return response()->json([
+                    'success' =>  false,
+                    'message' => 'User not found'
+                ], 404);
             }
 
             $experience = $user->experiences()->find($experienceId);
 
             if (!$experience) {
                 return response()->json([
-                    'message' => 'Experience tidak ditemukan untuk user ini'
+                    'success' => false,
+                    'message' => 'Experience not found for this user'
                 ], 404);
             }
 
@@ -727,11 +774,13 @@ class UserApiController extends Controller
             Redis::del("user:profile:{$userId}");
 
             return response()->json([
-                'message' => 'Experience berhasil dihapus'
+                'success' => true,
+                'message' => 'Experience successfully removed'
             ], 200);
         } catch (\Exception $e) {
             return response()->json ([
-                'message' => 'Gagal menghapus experience',
+                'success' =>  false,
+                'message' => 'Failed to remove experience',
                 'error' => $e->getMessage()
             ], 500);
 
@@ -763,26 +812,26 @@ class UserApiController extends Controller
         $allActivitiesData = Redis::get($key);
 
         if (!$allActivitiesData) {
-            $activities = Kegiatan::select('nama_kegiatan', 'sistem_kegiatan', 'tgl_penutupan', 'deskripsi')->get();
+            $activities = Kegiatan::select('id_kegiatan', 'nama_kegiatan', 'sistem_kegiatan', 'tgl_penutupan', 'deskripsi')->get();
 
             if (!$activities) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Tidak ada kegiatan',
+                    'message' => 'No activities available',
                 ], 404);
             }
 
             Redis::setex("$key", 3600, json_encode($activities));
             return response()->json([
                 'success' => true,
-                'message' => 'Berhasil mengambil seluruh kegiatan',
+                'message' => 'Successfully fetched all activities',
                 'data' => $activities
             ], 200);
         } else {
             $activities = json_decode($allActivitiesData);
             return response()->json([
                 'success' => true,
-                'message' => 'Data berhasil diambil dari redis',
+                'message' => 'Successfully fetched all activities (Redis)',
                 'data' => $activities
             ]);
         }
@@ -804,14 +853,14 @@ class UserApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Berhasil mengambil detail kegiatan',
+                'message' => 'Successfully fetched activity details',
                 'data' => $activity
             ], 200);
         } else {
             $activity = json_decode($detailActivitiData);
             return response()->json([
                 'success' => true,
-                'message' => 'Data berhasil diambil dari redis',
+                'message' => 'Successfully fetched activity details (Redis)',
                 'data' => $activity
             ]);
         }
@@ -822,19 +871,19 @@ class UserApiController extends Controller
         $allEmployersData = Redis::get($key);
 
         if (!$allEmployersData) {
-            $employers = Mitra::select('logo', 'nama_mitra', 'industri', 'alamat')->get();
+            $employers = Mitra::select('id_mitra', 'logo', 'nama_mitra', 'industri', 'alamat')->get();
 
             if (!$employers) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Tidak ada kegiatan',
+                    'message' => 'No Employers available',
                 ], 404);
             }
 
             Redis::setex("$key", 3600, json_encode($employers));
             return response()->json([
                 'success' => true,
-                'message' => 'Berhasil mengambil seluruh Employer',
+                'message' => 'Successfully fetched all employers',
                 'data' => $employers
             ], 200);
 
@@ -842,7 +891,7 @@ class UserApiController extends Controller
             $employers = json_decode($allEmployersData);
             return response()->json([
                 'success' => true,
-                'message' => 'Data berhasil diambil dari redis',
+                'message' => 'Successfully fetched all employers (Redis)',
                 'data' => $employers
             ]);
         }
@@ -862,7 +911,7 @@ class UserApiController extends Controller
             if (!$employer) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Employer tidak ditemukan',
+                    'message' => 'Employer not found',
                 ], 404);
             }
 
@@ -870,14 +919,14 @@ class UserApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Berhasil mengambil detail Employer',
+                'message' => 'Successfully fetched employer details',
                 'data' => $employer
             ], 200);
         } else {
             $employer = json_decode($detailEmployerData);
             return response()->json([
                 'success' => true,
-                'message' => 'Data berhasil diambil dari redis',
+                'message' => 'Successfully fetched employer details (Redis)',
                 'data' => $employer
             ]);
         }
@@ -889,7 +938,10 @@ class UserApiController extends Controller
             // Ambil token dari header
             $token = $request->bearerToken();
             if (!$token) {
-                return response()->json(['message' => 'Token tidak ditemukan.'], 400);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Token not found.'
+                ], 400);
             }
 
             // Ambil payload untuk mendapatkan username
@@ -907,10 +959,13 @@ class UserApiController extends Controller
             // Blacklist token agar tidak bisa digunakan lagi
             JWTAuth::invalidate($token);
 
-            return response()->json(['message' => 'Logout berhasil. Token telah dihapus.'], 200);
+            return response()->json([
+                'success' => true,
+                'message' => 'Logout successful'
+            ], 200);
         } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Terjadi kesalahan saat logout.',
+                'message' => 'An error occurred during logout',
                 'error' => $e->getMessage(),
             ], 500);
         }

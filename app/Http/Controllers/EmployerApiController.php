@@ -35,13 +35,14 @@ class EmployerApiController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
+            return response()->json([
+                'errors' => $validator->errors()
+            ], 422);
         }
 
         $username = $request->input('username');
         $credentials = $request->only('username', 'password');
 
-        // Periksa apakah mitra sedang diblokir
         $attemptKey = "login:attempts:$username";
         $blockKey = "login:blocked:$username";
 
@@ -49,27 +50,37 @@ class EmployerApiController extends Controller
             $ttl = Redis::ttl($blockKey);
             return response()->json([
                 'success' => false,
-                'message' => "Terlalu banyak percobaan login. Coba lagi dalam $ttl detik.",
+                'message' => "Too many login attempts. Please try again in $ttl seconds.",
             ], 429);
         }
 
         try {
-            // Cek apakah token sudah ada di Redis untuk mitra
             $redisKey = "mitra:token:$username";
             if (Redis::exists($redisKey)) {
                 $token = Redis::get($redisKey);
+                
+                $mitra = Mitra::where('username', $username)->first();
+                if (!$mitra) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'User not found.',
+                    ], 404);
+                }
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'Login berhasil (token diambil dari Redis)',
+                    'message' => 'Login successful (Redis)',
                     'token' => $token,
+                    'data' => [
+                        'id_mitra' => $mitra->id_mitra, // Ambil ID user dari model
+                        'username' => $mitra->username,
+                        'nama_mitra' => $mitra->nama_mitra
+                    ]
                 ], 200);
             }
 
-            // Validasi kredensial terhadap tabel mitra
             $mitra = Mitra::where('username', $username)->first();
             if (!$mitra || !Hash::check($credentials['password'], $mitra->password)) {
-                // Tambah jumlah percobaan login
                 $attempts = Redis::incr($attemptKey);
                 Redis::expire($attemptKey, 3600);
 
@@ -78,35 +89,38 @@ class EmployerApiController extends Controller
                     Redis::del($attemptKey);
                     return response()->json([
                         'success' => false,
-                        'message' => 'Terlalu banyak percobaan login. Anda diblokir selama 5 menit.',
+                        'message' => 'Too many login attempts. You are blocked for 5 minutes.',
                     ], 429);
                 }
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Login gagal, username atau password salah.',
+                    'message' => '"Login failed, incorrect username or password.',
                     'attempts_left' => 5 - $attempts,
                 ], 401);
             }
 
-            // Buat token baru untuk mitra
             $token = JWTAuth::claims([
                 'username' => $username,
                 'iat' => time(),
             ])->fromUser($mitra);
 
-            // Simpan token ke Redis untuk mitra
             Redis::setex($redisKey, 3600, $token);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Login berhasil (token baru dibuat)',
+                'message' => 'Login successful (new token created).',
                 'token' => $token,
+                'data' => [
+                    'id_mitra' => $mitra->id_mitra, // Ambil ID user dari model
+                    'username' => $mitra->username,
+                    'nama_mitra' => $mitra->nama_mitra
+                ]
             ], 200);
         } catch (JWTException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal membuat token',
+                'message' => 'Failed to create token.',
                 'error' => $e->getMessage(),
             ], 500);
         }
@@ -115,7 +129,6 @@ class EmployerApiController extends Controller
     public function registrasi(Request $request) 
     {
         try {
-            // Validasi input
             $validator = Validator::make($request->all(), [
                 'nama_mitra' => 'required|max:50',
                 'username' => 'required|max:50',
@@ -133,18 +146,18 @@ class EmployerApiController extends Controller
                     'regex:/^[0-9]{10,15}$/',
                 ]
             ], [
-                'nama_mitra.required' => 'Nama Perusahaan wajib diisi',
-                'nama_mitra.max' => 'Nama Perusahaan tidak boleh lebih dari 50 karakter',
-                'username.required' => 'Username wajib diisi',
-                'username.max' => 'Username tidak boleh lebih dari 50 karakter',
-                'email_mitra.required' => 'Email peruhasaan wajib diisi',
-                'email_mitra.email' => 'Format email tidak valid',
-                'password.required' => 'Password wajib diisi',
-                'password.min' => 'Password harus memiliki minimal 8 karakter.',
-                'password.max' => 'Password tidak boleh lebih dari 255 karakter.',
-                'password.regex' => 'Password harus mengandung setidaknya satu huruf kapital, satu angka, dan satu simbol.',
-                'nomor_telephone.required' => 'Nomor telephone wajib diisi',
-                'nomor_telephone.regex' => 'Nomor telephone harus berupa angka dan memiliki panjang 10-15 digit'
+                'nama_mitra.required' => 'Company name is required',
+                'nama_mitra.max' => 'Company name cannot be more than 50 characters',
+                'username.required' => 'Username is required',
+                'username.max' => 'Username cannot be more than 50 characters',
+                'email_mitra.required' => 'Email company is required',
+                'email_mitra.email' => 'Invalid email format',
+                'password.required' => 'Password is required',
+                'password.min' => 'Password must be at least 8 characters long',
+                'password.max' => 'Password cannot be more than 255 characters',
+                'password.regex' => 'Password must contain at least one uppercase letter, one number, and one symbol',
+                'nomor_telephone.required' => 'Phone number is required',
+                'nomor_telephone.regex' => 'Phone number must be numeric and between 10 to 15 digits long'
             ]);
 
             if ($validator->fails()) {
@@ -163,11 +176,11 @@ class EmployerApiController extends Controller
 
             $existing_username = Mitra::where('username', $request->username)->first();
             if ($existing_username) {
-                // Jika username sudah digunakan, return dengan pesan error
                 return response()->json([
-                    'message' => 'Username sudah digunakan',
+                    'success' => false,
+                    'message' => 'Username is already taken',
                     'status' => 'error'
-                ], 400); // Menggunakan status kode 400 untuk menandakan adanya kesalahan validasi
+                ], 400);
             }
 
             $registrasi-> save();
@@ -176,13 +189,13 @@ class EmployerApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Registrasi Berhasil',
+                'message' => 'Registration successful',
                 'data'=>$registrasi
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal melakukan registrasi',
+                'message' => 'Registration failed',
                 'error'=>$e->getMessage() 
             ], 500);
         }
@@ -200,7 +213,8 @@ class EmployerApiController extends Controller
             $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json([
-                    'message' => '"Nope, we couldnâ€™t find that ID. Itâ€™s either gone or never existed ðŸ™„"'
+                    'success' => false,
+                    'message' => "Nope, we couldn't find that ID. It's either gone or never existed",
                 ], 404);
             }
 
@@ -208,13 +222,14 @@ class EmployerApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Data employer berhasil diambil dari database',
+                'message' => 'Employer data successfully retrieved',
                 'data' => $employer
             ]);
         } else {
             $employer = json_decode($employerData, true);
             return response()->json([
-                'message' => 'Data employer masih ada di Redis',
+                'success' => true,
+                'message' => 'Employer data successfully retrieved (Redis)',
                 'data' => $employer,
             ], 200);
         }
@@ -229,7 +244,7 @@ class EmployerApiController extends Controller
                 if ($authenticatedEmployerId != $employerId) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'Anda tidak memiliki izin.',
+                        'message' => 'You do not have permission',
                     ], 403);
                 }
 
@@ -250,29 +265,30 @@ class EmployerApiController extends Controller
                 'gambar' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
                 'logo' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
             ], [
-                'username.max' => 'Username tidak boleh lebih dari 50 karakter',
-                'password.min' => 'Password harus memiliki minimal 8 karakter.',
-                'password.max' => 'Password tidak boleh lebih dari 255 karakter.',
-                'password.regex' => 'Password harus mengandung setidaknya satu huruf kapital, satu angka, dan satu simbol.',
-                'email_mitra.email' => 'Format email tidak valid',
-                'nama_mitra.max' => 'Nama mitra tidak boleh lebih dari 50 karakter',
-                'bio.max' => 'Bio tidak boleh lebih dari 50 karakter',
-                'industri.max' => 'Industri tidak boleh lebih dari 50 karakter',
-                'ukuran_perusahaan.regex' => 'Ukuran perusahaan harus berupa angka',
-                'deskripsi.max' => 'Deskripsi tidak boleh lebih dari 255 karakter',
-                'alamat.max' => 'Alamat tidak boleh lebih dari 255 karakter',
-                'nomor_telephone.regex' => 'Nomor telephone harus berupa angka dan memiliki panjang 10-15 digit',
-                'gambar.image' => 'Gambar harus berupa gambar.',
-                'gambar.mimes' => 'Gambar harus berupa file JPG, JPEG, atau PNG.',
-                'gambar.max' => 'Ukuran gambar tidak boleh lebih dari 2MB.', 
-                'logo.image' => 'Logo harus berupa gambar.',
-                'logo.mimes' => 'Logo harus berupa file JPG, JPEG, atau PNG.',
-                'logo.max' => 'Ukuran logo tidak boleh lebih dari 2MB.'
+                'username.max' => 'Username cannot be more than 50 characters',
+                'password.min' => 'Password must be at least 8 characters long',
+                'password.max' => 'Password cannot be more than 255 characters',
+                'password.regex' => 'Password must contain at least one uppercase letter, one number, and one symbol',
+                'email_mitra.email' => 'Invalid email format',
+                'nama_mitra.max' => 'Company name cannot be more than 50 characters',
+                'bio.max' => 'Bio cannot be more than 50 characters',
+                'industri.max' => 'Industry cannot be more than 50 characters',
+                'ukuran_perusahaan.regex' => 'Company size must be a number',
+                'deskripsi.max' => 'Description cannot be more than 255 characters',
+                'alamat.max' => 'Address cannot be more than 255 characters',
+                'nomor_telephone.regex' => 'Phone number must be numeric and between 10 to 15 digits long',
+                'gambar.image' => 'The file must be an image',
+                'gambar.mimes' => 'The image must be a JPG, JPEG, or PNG file',
+                'gambar.max' => 'The image size cannot exceed 2MB', 
+                'logo.image' => 'The logo must be an image.',
+                'logo.mimes' => 'The logo must be a JPG, JPEG, or PNG file',
+                'logo.max' => 'The logo size cannot exceed 2MB'
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
-                    'message' => 'Validasi gagal',
+                    'success' => false,
+                    'message' => 'Validation failed',
                     'errors' => $validator->errors()
                 ], 400);
             }
@@ -281,11 +297,10 @@ class EmployerApiController extends Controller
 
             $existing_username = Mitra::where('username', $request->username)->first();
             if ($existing_username) {
-                // Jika username sudah digunakan, return dengan pesan error
                 return response()->json([
-                    'message' => 'Username sudah digunakan',
-                    'status' => 'error'
-                ], 400); // Menggunakan status kode 400 untuk menandakan adanya kesalahan validasi
+                    'status' => false,
+                    'message' => 'Username is already taken',
+                ], 400);
             }
 
             $employer->nama_mitra = $request->nama_mitra ?? $employer->nama_mitra;
@@ -298,17 +313,14 @@ class EmployerApiController extends Controller
             $employer->alamat = $request->alamat ?? $employer->alamat;
             $employer->nomor_telephone = $request->nomor_telephone ?? $employer->nomor_telephone;
             
-            // Upload foto profile
             if ($request->hasFile('gambar')) {
                 $this->handleFileUpload($request->file('gambar'), 'gambar', $employer, 'gambar');
             }
 
-            // Upload foto profile
             if ($request->hasFile('logo')) {
                 $this->handleFileUpload($request->file('logo'), 'logo', $employer, 'logo');
             }
 
-            // Hash password jika diubah
             if ($request->filled('password')) {
                 $employer->password = Hash::make($request->password);
             }
@@ -319,12 +331,14 @@ class EmployerApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $employer,
+                'message' => 'Successfully updated employer profile',
+                'data' => $employer
             ], 200);
 
         } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Gagal memperbarui profile mitra',
+                'success' => false,
+                'message' => 'Failed to update employer profile',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -339,7 +353,7 @@ class EmployerApiController extends Controller
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki izin.',
+                    'message' => 'You do not have permission',
                 ], 403);
             }
 
@@ -352,25 +366,24 @@ class EmployerApiController extends Controller
             if (!$employer) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Nope, we couldnâ€™t find that ID. Itâ€™s either gone or never existed ðŸ™„',
+                    'message' => "Nope, we couldn't find that ID. It's either gone or never existed",
                 ], 404);
             }
 
             $activities = Kegiatan::where('id_mitra', $employer->id_mitra)
-                                        ->select('nama_kegiatan', 'sistem_kegiatan', 'tgl_penutupan', 'deskripsi')
                                         ->get();
 
             Redis::setex("$key", 3600, json_encode($activities));
             return response()->json([
                 'success' => true,
-                'message' => 'Berhasil mengambil seluruh kegiatan pada mitra ini',
+                'message' => 'Successfully retrieved all activities for this company',
                 'data' => $activities
             ], 200);
         } else {
             $activities = json_decode($employerActivitiesData);
             return response()->json([
                 'success' => true,
-                'message' => 'Data berhasil diambil dari redis',
+                'message' => 'Successfully retrieved all activities for this company (Redis)',
                 'data' => $activities
             ]);
         }
@@ -385,7 +398,7 @@ class EmployerApiController extends Controller
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki izin.',
+                    'message' => 'You do not have permission',
                 ], 403);
             }
 
@@ -399,7 +412,7 @@ class EmployerApiController extends Controller
             if (!$employer) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Nope, we couldnâ€™t find that ID. Itâ€™s either gone or never existed ðŸ™„',
+                    'message' => "Nope, we couldn't find that ID. It's either gone or never existed",
                 ], 404);
             }
 
@@ -410,14 +423,14 @@ class EmployerApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Berhasil mengambil detail kegiatan',
+                'message' => 'Successfully retrieved activity details',
                 'data' => $activity
             ], 200);
         } else {
             $activity = json_decode($detailActivitiData);
             return response()->json([
                 'success' => true,
-                'message' => 'Data berhasil diambil dari redis',
+                'message' => 'Successfully retrieved activity details (Redis)',
                 'data' => $activity
             ]);
         }
@@ -432,21 +445,23 @@ class EmployerApiController extends Controller
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki izin.',
+                    'message' => 'You do not have permission',
                 ], 403);
             }
 
             $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json([
-                    'message' => 'Employer tidak ditemukan.'
+                    'success' => false,
+                    'message' => "Nope, we couldn't find that ID. It's either gone or never existed"
                 ], 404);
             }
 
             $category = Kategori::find($request->id_kategori);
             if (!$category) {
                 return response()->json([
-                    'message' => 'Kategori tidak ditemukan.'
+                    'success' => false,
+                    'message' => 'Category not found'
                 ], 404);
             }
 
@@ -460,26 +475,27 @@ class EmployerApiController extends Controller
                 'tgl_penutupan' => 'required|date',
                 'tgl_kegiatan' => 'required|date',
             ], [
-                'id_kategori.required' => 'Kategori wajib diisi',
-                'lokasi_kegiatan.required' => 'Lokasi kegiatan wajib diisi',
-                'lokasi_kegiatan.max' => 'Lokasi kegiatan tidak boleh lebih dari 50 karakter',
-                'nama_kegiatan.required' => 'Nama Kegiatan wajib diisi.',
-                'nama_kegiatan.max' => 'Nama Kegiatan tidak boleh lebih dari 50 karakter',
-                'lama_kegiatan.required' => 'Lama kegiatan wajib diisi',
-                'lama_kegiatan.max' => 'Lama kegiatan tidak boleh lebih dari 50 karakter',
-                'sistem_kegiatan.required' => 'Sistem Kegiatan wajib diisi',
-                'sistem_kegiatan.in' => 'Sistem Kegiatan harus diisi Online atau Offline',
-                'deskripsi.required' => 'Deskripsi kegiatan wajib diisi',
-                'deskripsi.max' => 'Deskripsi kegiatan tidak oleh lebih dari 255 karakter',
-                'tgl_penutupan.required' => 'Tanggal penutupan wajib diisi',
-                'tgl_penutupan.date' => 'Tanggal penutupan diisi dengan format YYYY-MM-DD',
-                'tgl_kegiatan.required' => 'Tanggal kegiatan wajib diisi',
-                'tgl_kegiatan.date' => 'Tanggal kegiatan diisi dengan format YYYY-MM-DD'
+                'id_kategori.required' => 'Category is required',
+                'lokasi_kegiatan.required' => 'Location is required',
+                'lokasi_kegiatan.max' => 'Activity location cannot be more than 50 characters',
+                'nama_kegiatan.required' => 'Activity name is required',
+                'nama_kegiatan.max' => 'Activity name cannot be more than 50 characters',
+                'lama_kegiatan.required' => 'Activity duration is required',
+                'lama_kegiatan.max' => 'Activity duration cannot be more than 50 characters',
+                'sistem_kegiatan.required' => 'Activity system is required',
+                'sistem_kegiatan.in' => 'Activity system must be either Online or Offline',
+                'deskripsi.required' => 'Activity description is required',
+                'deskripsi.max' => 'Activity description cannot be more than 255 characters',
+                'tgl_penutupan.required' => 'The closing date is required',
+                'tgl_penutupan.date' => 'The closing date must be filled in the format YYYY-MM-DD',
+                'tgl_kegiatan.required' => 'The activity date is required to be filled in',
+                'tgl_kegiatan.date' => 'The activity date must be filled in the format YYYY-MM-DD'
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
-                    'message' => 'Validasi gagal',
+                    'success' => false,
+                    'message' => 'Validation failed',
                     'errors' => $validator->errors()
                 ], 400);
             }
@@ -501,12 +517,12 @@ class EmployerApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Kegiatan berhasil ditambahkan',
+                'message' => 'New activity has been successfully added',
             ], 201);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menambahkan kegiatan',
+                'message' => 'Failed to add new activity',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -522,25 +538,25 @@ class EmployerApiController extends Controller
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki izin.',
+                    'message' => 'You do not have permission',
                 ], 403);
             }
 
             $employer = Mitra::find($employerId);
             if (!$employer) {
                     return response()->json([
-                        'message' => 'Employer tidak ditemukan.'
+                        'success' => false,
+                        'message' => "Nope, we couldn't find that ID. It's either gone or never existed."
                     ], 404);
             }
 
             $activity = Kegiatan::find($activityId);
             if (!$activity) {
                 return response()->json([
-                    'message' => 'Kegiatan tidak ditemukan.'
+                    'success' =>false,
+                    'message' => 'Activity not found'
                 ], 404);
             }
-
-            
 
             $validator = Validator::make($request->all(), [
                 'id_kategori' => 'nullable',
@@ -552,18 +568,19 @@ class EmployerApiController extends Controller
                 'tgl_penutupan' => 'nullable|date',
                 'tgl_kegiatan' => 'nullable|date',
             ], [
-                'lokasi_kegiatan.max' => 'Lokasi kegiatan tidak boleh lebih dari 50 karakter',
-                'nama_kegiatan.max' => 'Nama Kegiatan tidak boleh lebih dari 50 karakter',
-                'lama_kegiatan.max' => 'Lama kegiatan tidak boleh lebih dari 50 karakter',
-                'sistem_kegiatan.in' => 'Sistem Kegiatan harus diisi Online atau Offline',
-                'deskripsi.max' => 'Deskripsi kegiatan tidak oleh lebih dari 255 karakter',
-                'tgl_penutupan.date' => 'Tanggal penutupan diisi dengan format YYYY-MM-DD',
-                'tgl_kegiatan.date' => 'Tanggal kegiatan diisi dengan format YYYY-MM-DD'
+                'lokasi_kegiatan.max' => 'Activity location cannot be more than 50 characters',
+                'nama_kegiatan.max' => 'Activity name cannot be more than 50 characters',
+                'lama_kegiatan.max' => 'Activity duration cannot be more than 50 characters',
+                'sistem_kegiatan.in' => 'Activity system must be either Online or Offline',
+                'deskripsi.max' => 'Activity description cannot be more than 255 characters',
+                'tgl_penutupan.date' => 'The closing date must be in the format YYYY-MM-DD',
+                'tgl_kegiatan.date' => 'The activity date must be in the format YYYY-MM-DD'
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
-                    'message' => 'Validasi gagal',
+                    'success' => false,
+                    'message' => 'Validation failed',
                     'errors' => $validator->errors()
                 ], 400);
             }
@@ -584,12 +601,12 @@ class EmployerApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Kegiatan berhasil diperbarui',
+                'message' => 'Activity successfully updated',
             ], 201);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal memperbarui kegiatan',
+                'message' => 'Failed to update activity',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -605,21 +622,23 @@ class EmployerApiController extends Controller
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki izin.',
+                    'message' => 'You do not have permission',
                 ], 403);
             }
 
             $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json([
-                    'message' => 'Employer tidak ditemukan.'
+                    'success' => false,
+                    'message' => 'Employer not found'
                 ], 404);
             }
 
             $activity = Kegiatan::where('id_mitra', $employer->id_mitra)->find($activityId);
             if (!$activity) {
                 return response()->json([
-                    'message' => 'Kegiatan tidak ditemukan.'
+                    'success' => false,
+                    'message' => 'Activity not found',
                 ], 404);
             }
             
@@ -629,12 +648,12 @@ class EmployerApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Kegiatan berhasil dihapus'
+                'message' => 'Activity successfully deleted',
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus Kegiatan',
+                'message' => 'Failed to delete activity',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -651,33 +670,36 @@ class EmployerApiController extends Controller
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki izin.',
+                    'message' => 'You do not have permission',
                 ], 403);
             }
 
             $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json([
-                    'message' => 'Employer tidak ditemukan.'
+                    'success' => false,
+                    'message' => 'Employer not found'
                 ], 404);
             }
 
             $activity = Kegiatan::where('id_mitra', $employer->id_mitra)->find($activityId);
             if (!$activity) {
                 return response()->json([
-                    'message' => 'Kegiatan tidak ditemukan.'
+                    'success' => false,
+                    'message' => 'Activity not found'
                 ], 404);
             }
 
             $validator = Validator::make($request->all(), [
-                'nama_benefit' => 'max:30',
+                'nama_benefit' => 'max:255',
             ], [
-                'nama_benefit.max' => 'Benefit tidak boleh lebih dari 30 karakter'              
+                'nama_benefit.max' => 'Benefit cannot be more than 255 characters'              
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
-                    'message' => 'Validasi gagal',
+                    'success' => false,
+                    'message' => 'Validation failed',
                     'errors' => $validator->errors()
                 ], 400);
             }
@@ -691,12 +713,12 @@ class EmployerApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Benefit berhasil ditambahkan pada kegiatan ini',
+                'message' => 'Benefit successfully added to this activity',
             ], 201);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menambahkan benefit',
+                'message' => 'Failed to add benefit',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -713,14 +735,15 @@ class EmployerApiController extends Controller
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki izin.',
+                    'message' => 'You do not have permission',
                 ], 403);
             }
 
             $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json([
-                    'message' => 'Employer tidak ditemukan.'
+                    'success' => false,
+                    'message' => 'Employer not found'
                 ], 404);
             }
 
@@ -728,14 +751,16 @@ class EmployerApiController extends Controller
                                     ->find($activityId);
             if (!$activity) {
                 return response()->json([
-                    'message' => 'Kegiatan tidak ditemukan.'
+                    'success' => false,
+                    'message' => 'Activity not found'
                 ], 404);
             }
             
             $benefit = $activity->benefits()->find($benefitId);
             if (!$benefit) {
                 return response()->json([
-                    'message' => 'Benefit tidak ditemukan.'
+                    'success' => false,
+                    'message' => 'Benefit not found'
                 ], 404);
             }
 
@@ -748,7 +773,7 @@ class EmployerApiController extends Controller
             if ($otherActivity > 0) {
                 return response()->json([
                     'success' => true,
-                    'message' => 'Benefit dihapus dari kegiatan ini'
+                    'message' => 'Benefit removed from this activity'
                 ], 200);
             }
 
@@ -758,12 +783,12 @@ class EmployerApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Benefit berhasil dihapus'
+                'message' => 'Benefit successfully deleted'
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus benefit',
+                'message' => 'Failed to delete benefit',
                 'error' => $e->getMessage()
             ], 500);
         } 
@@ -780,14 +805,15 @@ class EmployerApiController extends Controller
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki izin.',
+                    'message' => 'You do not have permission',
                 ], 403);
             }
 
             $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json([
-                    'message' => 'Employer tidak ditemukan.'
+                    'success' => false,
+                    'message' => 'Employer not found'
                 ], 404);
             }
 
@@ -795,19 +821,21 @@ class EmployerApiController extends Controller
                                     ->find($activityId);
             if (!$activity) {
                 return response()->json([
-                    'message' => 'Kegiatan tidak ditemukan.'
+                    'success' => false,
+                    'message' => 'Activity not found'
                 ], 404);
             }
 
             $validator = Validator::make($request->all(), [
-                'nama_kriteria' => 'max:30',
+                'nama_kriteria' => 'max:255',
             ], [
-                'nama_kriteria.max' => 'Kriteria tidak boleh lebih dari 30 karakter'              
+                'nama_kriteria.max' => 'Requirement cannot be more than 255 characters.'              
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
-                    'message' => 'Validasi gagal',
+                    'success' => false,
+                    'message' => 'Validation failed',
                     'errors' => $validator->errors()
                 ], 400);
             }
@@ -821,12 +849,12 @@ class EmployerApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Kriteria berhasil ditambahkan pada kegiatan ini',
+                'message' => 'Requirement successfully added to this activity',
             ], 201);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menambahkan kriteria',
+                'message' => 'Failed to add requirement',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -843,14 +871,15 @@ class EmployerApiController extends Controller
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki izin.',
+                    'message' => 'You do not have permission',
                 ], 403);
             }
 
             $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json([
-                    'message' => 'Employer tidak ditemukan.'
+                    'success' => false,
+                    'message' => 'Employer not found'
                 ], 404);
             }
 
@@ -858,19 +887,21 @@ class EmployerApiController extends Controller
                                     ->find($activityId);
             if (!$activity) {
                 return response()->json([
-                    'message' => 'Kegiatan tidak ditemukan.'
+                    'success' => false,
+                    'message' => 'Activity not found'
                 ], 404);
             }
             
             $requirement = $activity->kriterias()->find($requirementId);
             if (!$requirement) {
                 return response()->json([
-                    'message' => 'Kriteria tidak ditemukan.'
+                    'success' => false,
+                    'message' => 'Requirement not found'
                 ], 404);
             }
 
             // Hapus hubungan benefit dengan kegiatan
-            $activity->kriterias()->detach($requirement->id_benefit);
+            $activity->kriterias()->detach($requirement->id_kriteria);
 
             // Periksa apakah benefit masih digunakan oleh kegiatan lain
             $otherActivity = $requirement->kegiatans()->count();
@@ -878,7 +909,7 @@ class EmployerApiController extends Controller
             if ($otherActivity > 0) {
                 return response()->json([
                     'success' => true,
-                    'message' => 'Kriteria dihapus dari kegiatan ini'
+                    'message' => 'Requirement removed from this activity'
                 ], 200);
             }
 
@@ -888,12 +919,12 @@ class EmployerApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Kriteria berhasil dihapus'
-            ], 200);
+                'message' => 'Requirement successfully deleted'
+            ], 200); 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus kriteria',
+                'message' => 'Failed to delete requirement',
                 'error' => $e->getMessage()
             ], 500);
         } 
@@ -908,7 +939,7 @@ class EmployerApiController extends Controller
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki izin.',
+                    'message' => 'You do not have permission',
                 ], 403);
             }
 
@@ -920,7 +951,8 @@ class EmployerApiController extends Controller
 
             if(!$employer) {
                 return response()->json([
-                    'message' => '"Nope, we couldnâ€™t find that ID. Itâ€™s either gone or never existed ðŸ™„"'
+                    'success' => false,
+                    'message' => "Nope, we couldn't find that ID. It's either gone or never existed"
                 ], 404);
             }
 
@@ -933,14 +965,14 @@ class EmployerApiController extends Controller
             Redis::setex("$key", 3600, json_encode($applicants));
             return response()->json([
                 'success' => true,
-                'message' => 'Berhasil mengambil seluruh pendaftar pada mitra ini',
+                'message' => 'Successfully retrieved all applicants for this employer',
                 'data' => $applicants
             ], 200);
         } else {
             $applicants = json_decode($applicantData);
             return response()->json([
                 'success' => true,
-                'message' => 'Data berhasil diambil dari redis',
+                'message' => 'Successfully retrieved all applicants for this employer (Redis)',
                 'data' => $applicants
             ]);
         }
@@ -956,7 +988,7 @@ class EmployerApiController extends Controller
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki izin.',
+                    'message' => 'You do not have permission',
                 ], 403);
             }
 
@@ -967,7 +999,8 @@ class EmployerApiController extends Controller
                 $employer = Mitra::find($employerId);
                 if (!$employer) {
                     return response()->json([
-                        'message' => 'Employer tidak ditemukan.'
+                        'success' => false,
+                        'message' => 'Employer not found'
                     ], 404);
                 }
 
@@ -975,7 +1008,8 @@ class EmployerApiController extends Controller
 
                 if ($activities->isEmpty()) {
                     return response()->json([
-                        'message' => 'Tidak ada kegiatan terkait employer ini.'
+                        'success' => false,
+                        'message' => 'No activity associated with this employer'
                     ], 404);
                 }
 
@@ -985,7 +1019,8 @@ class EmployerApiController extends Controller
 
                 if (!$applicant) {
                     return response()->json([
-                        'message' => 'Pendaftar tidak ditemukan.'
+                        'success' => false,
+                        'message' => 'Applicant not found'
                     ], 404);
                 }
 
@@ -993,21 +1028,21 @@ class EmployerApiController extends Controller
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'Detail pendaftar berhasil diambil.',
+                    'message' => 'Applicant details successfully retrieved',
                     'data' => $applicant
                 ], 200);
             } else {
                 $applicant = json_decode($detailApplicantData);
                 return response()->json([
                     'success' => true,
-                    'message' => 'Detail pendaftar berhasil diambil dari Redis.',
+                    'message' => 'Applicant details successfully retrieved (Redis)',
                     'data' => $applicant
                 ], 200);
             }
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Terjadi kesalahan saat mengambil detail pendaftar.',
+                'message' => 'An error occurred while retrieving applicant details',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -1024,14 +1059,15 @@ class EmployerApiController extends Controller
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki izin.',
+                    'message' => 'You do not have permission',
                 ], 403);
             }
 
             $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json([
-                    'message' => 'Employer tidak ditemukan.'
+                    'success' => false,
+                    'message' => 'Employer not found'
                 ], 404);
             }
 
@@ -1041,7 +1077,8 @@ class EmployerApiController extends Controller
 
             if (!$activity) {
                 return response()->json([
-                    'message' => 'Kegiatan tidak ditemukan atau bukan kegiatan Anda.'
+                    'success' => false,
+                    'message' => 'Activity not found'
                 ], 404);
             }
 
@@ -1051,7 +1088,8 @@ class EmployerApiController extends Controller
 
             if (!$applicant) {
                 return response()->json([
-                    'message' => 'Pendaftar tidak ditemukan untuk kegiatan ini.'
+                    'success' => false,
+                    'message' => 'No applicants found for this activity'
                 ], 404);
             }
 
@@ -1059,14 +1097,15 @@ class EmployerApiController extends Controller
                 'status_applicant' => 'required',
                 'note_to_applicant' => 'required|max:255',
             ], [
-                'status_applicant.required' => 'Status Applicant harus diisi.',
-                'note_to_applicant.required' => 'Hire/Reject wajib menyertakan note kepada Applicant.',
-                'note_to_applicant.max' => 'Note untuk applicant tidak boleh lebih dari 255 karakter'
+                'status_applicant.required' => 'Applicant status is required',
+                'note_to_applicant.required' => 'Hire/Reject must include a note for the applicant',
+                'note_to_applicant.max' => 'Note for applicant cannot be more than 255 characters'
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
-                    'message' => 'Validasi gagal',
+                    'success' => false,
+                    'message' => 'Validation failed',
                     'errors' => $validator->errors()
                 ], 400);
             }
@@ -1086,6 +1125,7 @@ class EmployerApiController extends Controller
                 case 'Reject':
                     if (!$request->has('note_to_applicant') || empty($request->note_to_applicant)) {
                         return response()->json([
+                            'success' => false,
                             'message' => 'Note for Hire or Reject status must be provided.'
                         ], 400);
                     }
@@ -1094,6 +1134,7 @@ class EmployerApiController extends Controller
 
                 default:
                     return response()->json([
+                        'success' => false,
                         'message' => 'Invalid status_applicant value.'
                     ], 400);
             }
@@ -1104,18 +1145,21 @@ class EmployerApiController extends Controller
             Redis::del("user:profile:{$userId}", "employer:applicants:{$employerId}", "detail:applicant:{$employerId}:{$userId}");
 
             return response()->json([
-                'message' => 'Update Pendaftar Berhasil',
+                'success' => true,
+                'message' => 'Applicant update successful',
                 'data'=>$applicant
             ], 200);
         } catch (\Exception $e){
             return response()->json([
-                'message' => 'Gagal melakukan update pendaftaran',
+                'success' => false,
+                'message' => 'Failed to update registration',
                 'error' => $e->getMessage()
             ], 500);
         }
     }
 
-    public function updateInterview(Request $request) {
+    public function updateInterview(Request $request) 
+    {
         try{
             $employerId = $request->query('employerId');
             $userId = $request->query('userId');
@@ -1125,14 +1169,15 @@ class EmployerApiController extends Controller
             if ($authenticatedEmployerId != $employerId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki izin.',
+                    'message' => 'You do not have permission',
                 ], 403);
             }
             
             $employer = Mitra::find($employerId);
             if (!$employer) {
                 return response()->json([
-                    'message' => 'Employer tidak ditemukan.'
+                    'success' => false,
+                    'message' => 'Employer not found'
                 ], 404);
             }
 
@@ -1142,7 +1187,8 @@ class EmployerApiController extends Controller
 
             if (!$activity) {
                 return response()->json([
-                    'message' => 'Kegiatan tidak ditemukan atau bukan kegiatan Anda.'
+                    'success' => false,
+                    'message' => 'Activity not found'
                 ], 404);
             }
 
@@ -1152,7 +1198,8 @@ class EmployerApiController extends Controller
 
             if (!$applicant) {
                 return response()->json([
-                    'message' => 'Pendaftar tidak ditemukan untuk kegiatan ini.'
+                    'success' => false,
+                    'message' => 'No applicants found for this activity.'
                 ], 404);
             }
 
@@ -1162,18 +1209,19 @@ class EmployerApiController extends Controller
                 'interview_time' => 'required|date_format:H:i',
                 'note_interview' => 'nullable|max:255',
             ], [
-                'tgl_interview.required' => 'Tanggal interview harus diisi.',
-                'tgl_interview.date' => 'Tanggal interview diisi dengan format YYYY-MM-DD',
-                'lokasi_interview.required' => 'Lokasi interview wajib diisi',
-                'lokasi_interview.max' => 'Lokasi interview tidak boleh lebih dari 255 karakter',
-                'interview_time.required' => 'Waktu Interview wajib diisi',
-                'interview_time.date_format' => 'Waktu interview diisi dengan format HH:MM',
-                'note_interview.max' => 'Note interview tidak boleh lebih dari 255 karakter'
+                'tgl_interview.required' => 'Interview date is required',
+                'tgl_interview.date' => 'Interview date must be in the format YYYY-MM-DD',
+                'lokasi_interview.required' => 'Interview location is required',
+                'lokasi_interview.max' => 'Interview location cannot be more than 255 characters',
+                'interview_time.required' => 'Interview time is required',
+                'interview_time.date_format' => 'Interview time must be in the format HH:MM',
+                'note_interview.max' => 'Interview note cannot be more than 255 characters'
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
-                    'message' => 'Validasi gagal',
+                    'success' => false,
+                    'message' => 'Validation failed',
                     'errors' => $validator->errors()
                 ], 400);
             }
@@ -1194,7 +1242,7 @@ class EmployerApiController extends Controller
                 }
             }
             $applicant->note_interview = $request->note_interview;
-            $applicant->note_to_applicant = "Kamu masuk tahap Interview";
+            $applicant->note_to_applicant = "You have entered the Interview stage";
             $applicant->tgl_note = Date::now();
 
             $applicant->save();
@@ -1202,12 +1250,14 @@ class EmployerApiController extends Controller
             Redis::del("user:profile:{$userId}", "employer:applicants:{$employerId}", "detail:applicant:{$employerId}:{$userId}");
 
             return response()->json([
-                'message' => 'Data pendaftar berhasil diperbarui',
+                'success' => true,
+                'message' => 'Applicant data successfully updated',
                 'data' => $applicant
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Gagal memperbarui jadwal Interview',
+                'success' => false,
+                'message' => 'Failed to update interview schedule',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -1222,7 +1272,7 @@ class EmployerApiController extends Controller
             if (!$token) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Token tidak ditemukan.',
+                    'message' => 'Token not found',
                 ], 400);
             }
 
@@ -1237,18 +1287,18 @@ class EmployerApiController extends Controller
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'Logout berhasil. Token telah dihapus.',
+                    'message' => 'Logout successful',
                 ], 200);
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Token tidak ditemukan di Redis.',
+                    'message' => 'Token not found in Redis',
                 ], 404);
             }
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal logout.',
+                'message' => 'Failed to logout',
                 'error' => $e->getMessage(),
             ], 500);
         }

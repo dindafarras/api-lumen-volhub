@@ -45,7 +45,7 @@ class AdminApiController extends Controller
             $ttl = Redis::ttl($blockKey);
             return response()->json([
                 'success' => false,
-                'message' => "Terlalu banyak percobaan login. Coba lagi dalam $ttl detik.",
+                'message' => "Too many login attempts. Please try again in $ttl seconds",
             ], 429);
         }
 
@@ -54,11 +54,23 @@ class AdminApiController extends Controller
             $redisKey = "admin:token:$username";
             if (Redis::exists($redisKey)) {
                 $token = Redis::get($redisKey);
+                
+                $admin = Admin::where('username', $username)->first();
+                if (!$admin) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'User not found',
+                    ], 404);
+                }
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'Login berhasil (token diambil dari Redis)',
+                    'message' => 'Login successful (Redis)',
                     'token' => $token,
+                    'data' => [
+                        'id' => $admin->id, // Ambil ID user dari model
+                        'username' => $admin->username,
+                    ]
                 ], 200);
             }
 
@@ -74,13 +86,13 @@ class AdminApiController extends Controller
                     Redis::del($attemptKey);
                     return response()->json([
                         'success' => false,
-                        'message' => 'Terlalu banyak percobaan login. Anda diblokir selama 5 menit.',
+                        'message' => 'Too many login attempts. You are blocked for 5 minutes.',
                     ], 429);
                 }
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Login gagal, username atau password salah.',
+                    'message' => 'Login failed, incorrect username or password',
                     'attempts_left' => 5 - $attempts,
                 ], 401);
             }
@@ -96,13 +108,17 @@ class AdminApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Login berhasil (token baru dibuat)',
+                'message' => 'Login successful (new token created)',
                 'token' => $token,
+                'data' => [
+                    'id' => $admin->id, // Ambil ID user dari model
+                    'username' => $admin->username,
+                ]
             ], 200);
         } catch (JWTException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal membuat token',
+                'message' => 'Failed to create token',
                 'error' => $e->getMessage(),
             ], 500);
         }
@@ -123,7 +139,8 @@ class AdminApiController extends Controller
             $admin = Admin::find($adminId); // Data dari MySQL
             if (!$admin) {
                 return response()->json([
-                    'message' => '"Nope, we couldnâ€™t find that ID. Itâ€™s either gone or never existed ðŸ™„"'
+                    'success' => false,
+                    'message' => "Nope, we couldn't find that ID. It's either gone or never existed"
                 ], 404);
             }
     
@@ -132,13 +149,13 @@ class AdminApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Data admin berhasil diambil dari database',
+                'message' => 'The admin data has been successfully retrieved',
                 'data' => $admin
             ]);
         } else {
             $admin = json_decode($adminData, true);
             return response()->json([
-                'message' => 'Data admin masih ada di Redis',
+                'message' => 'The volunteer data has been successfully retrieved (Redis)',
                 'data' => $admin
             ], 200);
         }
@@ -153,7 +170,7 @@ class AdminApiController extends Controller
             if ($authenticatedidAdmin != $idAdmin) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki izin.',
+                    'message' => 'you do not have permission',
                 ], 403);
             }
 
@@ -162,7 +179,7 @@ class AdminApiController extends Controller
             if (!$admin) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Nope, we couldnâ€™t find that ID. Itâ€™s either gone or never existed ðŸ™„',
+                    'message' => "Nope, we couldn't find that ID. It's either gone or never existed",
                 ], 404);
             }
 
@@ -178,15 +195,16 @@ class AdminApiController extends Controller
                     'regex:/[\W_]/',    
                 ],
             ], [
-                'username.max' => 'Username tidak boleh lebih dari 255 karakter.',
-                'password.min' => 'Password harus memiliki minimal 8 karakter.',
-                'password.max' => 'Password tidak boleh lebih dari 255 karakter.',
-                'password.regex' => 'Password harus mengandung setidaknya satu huruf kapital, satu angka, dan satu simbol.',
+                'username.max' => 'Username cannot be more than 255 character',
+                'password.min' => 'Password must be at least 8 characters long',
+                'password.max' => 'Password cannot be more than 255 characters',
+                'password.regex' => 'Password must contain at least one uppercase letter, one number, and one symbol',
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
-                    'message' => 'Validasi gagal',
+                    'success' => false,
+                    'message' => 'Validation failed',
                     'errors' => $validator->errors(),
                 ], 422);
             }
@@ -203,12 +221,12 @@ class AdminApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Data berhasil diperbarui.',
+                'message' => 'Data successfully updated',
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal melakukan perubahan profile admin',
+                'message' => 'Failed to update admin profile',
                 'error' => $e->getMessage(),
             ], 500);
         }
@@ -226,6 +244,7 @@ class AdminApiController extends Controller
 
             if (!$category) {
                 return response()->json([
+                    'success' => false,
                     'message' => 'Category never existed'
                 ], 404);
             }
@@ -234,7 +253,7 @@ class AdminApiController extends Controller
             Redis::setex("$key", 3600, json_encode($category));
             return response()->json([
                 'success' => true,
-                'message' => 'Data berhasil diambil dari database',
+                'message' => 'Data successfully retrieved',
                 'data' => $category
             ]);
         } else {
@@ -242,7 +261,7 @@ class AdminApiController extends Controller
             $category = json_decode($categoryData);
             return response()->json([
                 'success' => true,
-                'message' => 'Data berhasil diambil dari redis',
+                'message' => 'Data successfully retrieved (Redis)',
                 'data' => $category
             ]);
         }
@@ -255,15 +274,16 @@ class AdminApiController extends Controller
 
             // Validasi input
             $validator = Validator::make($request->all(), [
-                'nama_kategori' => 'required|max:255',
+                'nama_kategori' => 'required|max:50',
             ], [
-                'nama_kategori.required' => 'Kategori wajib diisi.',
-                'nama_kategori.max' => 'Kategori tidak boleh lebih dari 255 karakter.',
+                'nama_kategori.required' => 'Category is required',
+                'nama_kategori.max' => 'Category cannot be more than 50 characters',
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
+                    'message' => 'Validation failed',
                     'errors' => $validator->errors(),
                 ], 422);
             }
@@ -276,12 +296,12 @@ class AdminApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Kategori baru behasil ditambahkan',
+                'message' => 'New category successfully added',
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menambahkan kategori baru',
+                'message' => 'Failed to add new category',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -295,20 +315,24 @@ class AdminApiController extends Controller
             $category = Kategori::find($idCategory);
 
             if (!$category) {
-                return response()->json(['message' => 'Kategori tidak ditemukan'], 404);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Category not found'
+                ], 404);
             }
 
             // Validasi input
             $validator = Validator::make($request->all(), [
                 'nama_kategori' => 'required|max:50',
             ], [
-                'nama_kategori.required' => 'Kategori wajib diisi.',
-                'nama_kategori.max' => 'Kategori tidak boleh lebih dari 50 karakter.',
+                'nama_kategori.required' => 'Category is required',
+                'nama_kategori.max' => 'Category cannot be more than 50 characters',
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
+                    'message' => 'Validation failed',
                     'errors' => $validator->errors(),
                 ], 422);
             }
@@ -320,12 +344,12 @@ class AdminApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Berhasil edit kategori',
+                'message' => 'Category successfully edited',
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal edit kategori',
+                'message' => 'Failed to edit category',
                 'error' => $e->getMessage(),
             ], 500);
         }
@@ -339,7 +363,10 @@ class AdminApiController extends Controller
             $category = Kategori::find($idCategory);
 
             if (!$category) {
-                return response()->json(['message' => 'Kategori tidak ditemukan'], 404);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Category not found'
+                ], 404);
             }
 
             $category->delete();
@@ -348,12 +375,12 @@ class AdminApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Berhasil menghapus kategori'
+                'message' => 'Category successfully deleted'
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus Kategori',
+                'message' => 'Failed delete category',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -367,11 +394,12 @@ class AdminApiController extends Controller
             $userData = Redis::get("$key");
 
             if (!$userData) {
-                $allUser = User::select('username', 'nama_user', 'email_user')->get();
+                $allUser = User::select('id', 'username', 'nama_user', 'email_user')->get();
 
                 if (!$allUser) {
                     return response()->json([
-                        'message' => 'Tidak ada data user'
+                        'success' => false,
+                        'message' => 'User not found'
                     ], 404);
                 }
         
@@ -379,7 +407,7 @@ class AdminApiController extends Controller
                 Redis::setex($key, 3600, json_encode($allUser));
                 return response()->json([
                     'success' => true,
-                    'message' => 'Data berhasil diambil dari database',
+                    'message' => 'Data successfully retrieved',
                     'data' => $allUser
                 ]);
             } else {
@@ -387,13 +415,14 @@ class AdminApiController extends Controller
                 $allUser = json_decode($userData);
                 return response()->json([
                     'success' => true,
-                    'message' => 'Data berhasil diambil dari redis',
+                    'message' => 'Data successfully retrieved (Redis)',
                     'data' => $allUser
                 ]);
             }
         } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Gagal mengambil data user',
+                'success' => false,
+                'message' => 'Failed to retrieve user data',
                 'error' => $e->getMessage()
             ], 200);
         }
@@ -411,26 +440,30 @@ class AdminApiController extends Controller
                 $detailUser = User::find($userId);
 
                 if (!$detailUser) {
-                    return response()->json(['message' => 'User tidak ditemukan'], 404);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'User not found'
+                    ], 404);
                 }
 
                 Redis::setex($key, 3600, $detailUser->toJson());
                 return response()->json([
                     'success' => true,
-                    'message' => 'Baru membuat key untuk Redis, data ini dari database',
+                    'message' => 'Data successfully retrieved',
                     'data' => $detailUser
                 ], 200);
             } else {
                 $detailUser = json_decode($detailUserData);
                 return response()->json([
                     'success' => true,
-                    'message' => 'Data berhasil diambil dari redis',
+                    'message' => 'Data successfully retrieved (Redis)',
                     'data' => $detailUser
                 ], 200);
             }
         } catch(\Exception $e) {
             return response()->json([
-                'message' => 'Gagal mengambil data detail user',
+                'success' => false,
+                'message' => 'Failed to retrieve user data',
                 'error' => $e->getMessage()
             ], 200);
         }
@@ -444,31 +477,33 @@ class AdminApiController extends Controller
             $mitraData = Redis::get($key);
 
             if(!$mitraData){
-                $allMitra = Mitra::select('username', 'nama_mitra', 'email_mitra')->get();
+                $allMitra = Mitra::select('id_mitra', 'username', 'nama_mitra', 'email_mitra')->get();
 
                 if(!$allMitra){
                     return response()->json([
-                        'message' => 'Mitra never existed'
+                        'success' => false,
+                        'message' => 'Employer not found'
                     ], 404);
                 }
                 Redis::setex($key, 3600, json_encode($allMitra));
                 
                 return response()->json([
                     'success' => true,
-                    'message' => 'Data berhasil diambil dari database',
+                    'message' => 'Data successfully retrieved',
                     'data' => $allMitra
                 ], 200);
             } else {
                 $allMitra = json_decode($mitraData);
                 return response()->json([
                     'success' => true,
-                    'message' => 'Data berhasil diambil dari redis',
+                    'message' => 'Data successfully retrieved (Redis)',
                     'data' => $allMitra,
                 ],200);
             }
         } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Gagal mengambil data mitra',
+                'success' => false,
+                'message' => 'Failed to retrieve user data',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -486,26 +521,30 @@ class AdminApiController extends Controller
                 $detailMitra = Mitra::find($employerId);
 
                 if (!$detailMitra) {
-                    return response()->json(['message' => 'Mitra tidak ditemukan'], 404);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Employer not found'
+                    ], 404);
                 }
 
                 Redis::setex($key, 3600, $detailMitra->toJson());
                 return response()->json([
                     'success' => true,
-                    'message' => 'Data berhasil diambil dari database',
+                    'message' => 'Data successfully retrieved',
                     'data' => $detailMitra
                 ], 200);
             } else {
                 $detailMitra = json_decode($detailMitraData);
                 return response()->json([
                     'success' => true,
-                    'message' => 'Data berhasil diambil dari redis',
+                    'message' => 'Data successfully retrieved',
                     'data' => $detailMitra
                 ], 200);
             }
         } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Gagal mengambil data detail mitra',
+                'success' => false,
+                'message' => 'Failed to retrieve user data',
                 'error' => $e->getMessage(),
             ], 500);
         }
@@ -517,7 +556,10 @@ class AdminApiController extends Controller
             // Ambil token dari header
             $token = $request->bearerToken();
             if (!$token) {
-                return response()->json(['message' => 'Token tidak ditemukan.'], 400);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Token not found.'
+                ], 400);
             }
 
             // Ambil payload untuk mendapatkan username
@@ -535,10 +577,14 @@ class AdminApiController extends Controller
             // Blacklist token agar tidak bisa digunakan lagi
             JWTAuth::invalidate($token);
 
-            return response()->json(['message' => 'Logout berhasil. Token telah dihapus.'], 200);
+            return response()->json([
+                'success' => true,
+                'message' => 'Logout successful'
+            ], 200);
         } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Terjadi kesalahan saat logout.',
+                'success' => false,
+                'message' => 'An error occurred during logout.',
                 'error' => $e->getMessage(),
             ], 500);
         }
