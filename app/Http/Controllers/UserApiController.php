@@ -39,7 +39,6 @@ class UserApiController extends Controller
         $username = $request->input('username');
         $credentials = $request->only('username', 'password');
 
-        // Periksa apakah pengguna sedang diblokir
         $attemptKey = "login:attempts:$username";
         $blockKey = "login:blocked:$username";
 
@@ -52,7 +51,6 @@ class UserApiController extends Controller
         }
 
         try {
-            // Cek apakah token sudah ada di Redis
             $redisKey = "user:token:$username";
             if (Redis::exists($redisKey)) {
                 $token = Redis::get($redisKey);
@@ -69,17 +67,15 @@ class UserApiController extends Controller
                     'message' => 'Login successful (Redis)',
                     'token' => $token,
                     'data' => [
-                        'id' => $user->id, // Ambil ID user dari model
+                        'id' => $user->id,
                         'username' => $user->username,
                         'nama_user' => $user->nama_user
                     ]
                 ], 200);
             }
 
-            // Login dan buat token baru
             $user = User::where('username', $username)->first();
             if (!$user || !Hash::check($credentials['password'], $user->password)) {
-                // Tambah jumlah percobaan login
                 $attempts = Redis::incr($attemptKey);
                 Redis::expire($attemptKey, 3600);
 
@@ -99,13 +95,11 @@ class UserApiController extends Controller
                 ], 401);
             }
 
-            // Buat token baru untuk mitra
             $token = JWTAuth::claims([
                 'username' => $username,
                 'iat' => time(),
             ])->fromUser($user);
 
-            // Simpan token ke Redis
             Redis::setex($redisKey, 3600, $token);
 
             return response()->json([
@@ -113,7 +107,7 @@ class UserApiController extends Controller
                 'message' => 'Login successful (new token created)',
                 'token' => $token,
                 'data' => [
-                    'id' => $user->id, // Ambil ID user dari model
+                    'id' => $user->id,
                     'username' => $user->username,
                     'nama_user' => $user->nama_user
                 ]
@@ -131,7 +125,6 @@ class UserApiController extends Controller
     public function registrasiUser(Request $request) 
     {
         try {   
-            // Validasi input
             $validator = Validator::make($request->all(), [
                 'nama_user' => 'required|max:50',
                 'username' => 'required|max:50',
@@ -179,12 +172,11 @@ class UserApiController extends Controller
 
             $existing_username = User::where('username', $request->username)->first();
             if ($existing_username) {
-                // Jika username sudah digunakan, return dengan pesan error
                 return response()->json([
                     'success' => false,
                     'message' => 'Username is already taken',
                     'status' => 'error'
-                ], 400); // Menggunakan status kode 400 untuk menandakan adanya kesalahan validasi
+                ], 400);
             }
 
             $registrasi-> save();
@@ -310,12 +302,11 @@ class UserApiController extends Controller
 
             $existing_username = User::where('username', $request->username)->first();
             if ($existing_username) {
-                // Jika username sudah digunakan, return dengan pesan error
                 return response()->json([
                     'success' => false,
                     'message' => 'Username is already taken',
                     'status' => 'error'
-                ], 400); // Menggunakan status kode 400 untuk menandakan adanya kesalahan validasi
+                ], 400);
             }
             
             $user->email_user = $request->email_user ?? $user->email_user;
@@ -331,22 +322,18 @@ class UserApiController extends Controller
             $user->linkedIn = $request->linkedIn ?? $user->linkedIn;
             
             
-            // Hash password jika diubah
             if ($request->filled('password')) {
                 $user->password = Hash::make($request->password);
             }
 
-            // Upload CV
             if ($request->hasFile('cv')) {
                 $this->handleFileUpload($request->file('cv'), 'cv', $user, 'cv');
             }
 
-            // Upload foto profile
             if ($request->hasFile('foto_profile')) {
                 $this->handleFileUpload($request->file('foto_profile'), 'foto-profile', $user, 'foto_profile');
             }
 
-            // Simpan perubahan pada user
             $user->save();
 
             Redis::del("user:all", "user:profile:{$userId}", "admin:DetailUser:{$userId}");
@@ -383,7 +370,6 @@ class UserApiController extends Controller
             $user = User::find($userId);
             $activity = Kegiatan::find($idActivity);
 
-            // Validasi apakah user dan kegiatan ditemukan
             if (!$user) {
                 return response()->json([
                     'success' => false,
@@ -419,7 +405,6 @@ class UserApiController extends Controller
             $apply->id_user = $user->id;
             $apply->id_kegiatan = $activity->id_kegiatan;
 
-            // Jika user sudah melakukan pendaftaran pada kegiatan yang sama
             $existingApplication = Pendaftar::where('id_user', $user->id)
                                     ->where('id_kegiatan', $activity->id_kegiatan)
                                     ->first();
@@ -431,12 +416,10 @@ class UserApiController extends Controller
                 ], 400);
             }
 
-            // Jika ada file CV yang diunggah
             if ($request->hasFile('cv')) {
                 $this->handleFileUpload($request->file('cv'), 'cv', $user, 'cv');
-                $user->save(); // Simpan perubahan ke user
+                $user->save();
             } else if (!$user->cv) {
-                // Jika user belum memiliki CV sebelumnya
                 return response()->json([
                     'success' => false,
                     'message' => 'You do not have a CV yet. Please upload a new CV',
@@ -445,7 +428,7 @@ class UserApiController extends Controller
 
             $apply->save();
 
-            Redis::del("mitra:pendaftar");// MASIH BINGUNG YANG INI
+            Redis::del("mitra:pendaftar");
 
             return response()->json([
                 'success' => true,
@@ -545,10 +528,8 @@ class UserApiController extends Controller
                 ], 404);
             }
 
-            // Hapus hubungan skill dengan user
             $user->skills()->detach($skill->id_skill);
 
-            // Periksa apakah skill masih digunakan oleh user lain
             $otherUsers = $skill->users()->count();
 
             if ($otherUsers > 0) {

@@ -72,7 +72,7 @@ class EmployerApiController extends Controller
                     'message' => 'Login successful (Redis)',
                     'token' => $token,
                     'data' => [
-                        'id_mitra' => $mitra->id_mitra, // Ambil ID user dari model
+                        'id_mitra' => $mitra->id_mitra,
                         'username' => $mitra->username,
                         'nama_mitra' => $mitra->nama_mitra
                     ]
@@ -112,7 +112,7 @@ class EmployerApiController extends Controller
                 'message' => 'Login successful (new token created).',
                 'token' => $token,
                 'data' => [
-                    'id_mitra' => $mitra->id_mitra, // Ambil ID user dari model
+                    'id_mitra' => $mitra->id_mitra,
                     'username' => $mitra->username,
                     'nama_mitra' => $mitra->nama_mitra
                 ]
@@ -1266,7 +1266,6 @@ class EmployerApiController extends Controller
     public function logout(Request $request)
     {
         try {
-            // Ambil token dari header Authorization
             $token = $request->bearerToken();
 
             if (!$token) {
@@ -1276,7 +1275,6 @@ class EmployerApiController extends Controller
                 ], 400);
             }
 
-            // Decode token untuk mendapatkan username
             $payload = JWTAuth::setToken($token)->getPayload();
             $username = $payload->get('username');
 

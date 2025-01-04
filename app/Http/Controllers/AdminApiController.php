@@ -37,7 +37,6 @@ class AdminApiController extends Controller
         $username = $request->input('username');
         $credentials = $request->only('username', 'password');
 
-        // Periksa apakah pengguna sedang diblokir
         $attemptKey = "login:attempts:$username";
         $blockKey = "login:blocked:$username";
 
@@ -50,7 +49,6 @@ class AdminApiController extends Controller
         }
 
         try {
-            // Cek apakah token sudah ada di Redis
             $redisKey = "admin:token:$username";
             if (Redis::exists($redisKey)) {
                 $token = Redis::get($redisKey);
@@ -68,13 +66,12 @@ class AdminApiController extends Controller
                     'message' => 'Login successful (Redis)',
                     'token' => $token,
                     'data' => [
-                        'id' => $admin->id, // Ambil ID user dari model
+                        'id' => $admin->id,
                         'username' => $admin->username,
                     ]
                 ], 200);
             }
 
-            // Login dan buat token baru
             $admin = Admin::where('username', $username)->first();
             if (!$admin || !Hash::check($credentials['password'], $admin->password)) {
                 // Tambah jumlah percobaan login
@@ -97,13 +94,11 @@ class AdminApiController extends Controller
                 ], 401);
             }
 
-            // Buat token baru untuk mitra
             $token = JWTAuth::claims([
                 'username' => $username,
                 'iat' => time(),
             ])->fromUser($admin);
 
-            // Simpan token ke Redis
             Redis::setex($redisKey, 3600, $token);
 
             return response()->json([
@@ -111,7 +106,7 @@ class AdminApiController extends Controller
                 'message' => 'Login successful (new token created)',
                 'token' => $token,
                 'data' => [
-                    'id' => $admin->id, // Ambil ID user dari model
+                    'id' => $admin->id,
                     'username' => $admin->username,
                 ]
             ], 200);
@@ -129,14 +124,12 @@ class AdminApiController extends Controller
     {
         $adminId = auth('admin')->id();
     
-        // Key Redis
         $key = "admin:profile:{$adminId}";
 
-        // Periksa data di Redis
         $adminData = Redis::get($key);
     
         if (!$adminData) {
-            $admin = Admin::find($adminId); // Data dari MySQL
+            $admin = Admin::find($adminId);
             if (!$admin) {
                 return response()->json([
                     'success' => false,
@@ -144,7 +137,6 @@ class AdminApiController extends Controller
                 ], 404);
             }
     
-            // Simpan ke Redis (3600 detik)
             Redis::setex($key, 3600, json_encode($admin));
 
             return response()->json([
@@ -238,7 +230,6 @@ class AdminApiController extends Controller
         $key = "admin:category:all";
         $categoryData = Redis::get("$key");
     
-        // Kalau tidak ada di Redis
         if (!$categoryData) {
             $category = Kategori::all();
 
@@ -249,7 +240,6 @@ class AdminApiController extends Controller
                 ], 404);
             }
     
-            // Simpan ke Redis (60 detik)
             Redis::setex("$key", 3600, json_encode($category));
             return response()->json([
                 'success' => true,
@@ -257,7 +247,6 @@ class AdminApiController extends Controller
                 'data' => $category
             ]);
         } else {
-            // Ambil data dari Redis
             $category = json_decode($categoryData);
             return response()->json([
                 'success' => true,
@@ -272,7 +261,6 @@ class AdminApiController extends Controller
         try {
             $category = new Kategori;
 
-            // Validasi input
             $validator = Validator::make($request->all(), [
                 'nama_kategori' => 'required|max:50',
             ], [
@@ -291,7 +279,6 @@ class AdminApiController extends Controller
             $category->nama_kategori = $request->nama_kategori;
             $category->save();
 
-            // Bersihkan cache daftar kategori di Redis
             Redis::del('admin:category:all');
 
             return response()->json([
@@ -402,8 +389,7 @@ class AdminApiController extends Controller
                         'message' => 'User not found'
                     ], 404);
                 }
-        
-                // Simpan ke Redis (60 detik)
+
                 Redis::setex($key, 3600, json_encode($allUser));
                 return response()->json([
                     'success' => true,
@@ -411,7 +397,6 @@ class AdminApiController extends Controller
                     'data' => $allUser
                 ]);
             } else {
-                // Ambil data dari Redis
                 $allUser = json_decode($userData);
                 return response()->json([
                     'success' => true,
@@ -553,7 +538,6 @@ class AdminApiController extends Controller
     public function logout(Request $request)
     {
         try {
-            // Ambil token dari header
             $token = $request->bearerToken();
             if (!$token) {
                 return response()->json([
@@ -562,19 +546,15 @@ class AdminApiController extends Controller
                 ], 400);
             }
 
-            // Ambil payload untuk mendapatkan username
             $payload = JWTAuth::setToken($token)->getPayload();
             $username = $payload->get('username');
 
-            // Tentukan Redis Key berdasarkan username
             $redisKey = "admin:token:$username";
 
-            // Hapus token dari Redis
             if (Redis::exists($redisKey)) {
                 Redis::del($redisKey);
             }
 
-            // Blacklist token agar tidak bisa digunakan lagi
             JWTAuth::invalidate($token);
 
             return response()->json([
