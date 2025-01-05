@@ -74,7 +74,6 @@ class AdminApiController extends Controller
 
             $admin = Admin::where('username', $username)->first();
             if (!$admin || !Hash::check($credentials['password'], $admin->password)) {
-                // Tambah jumlah percobaan login
                 $attempts = Redis::incr($attemptKey);
                 Redis::expire($attemptKey, 3600);
 
@@ -143,7 +142,7 @@ class AdminApiController extends Controller
                 'success' => true,
                 'message' => 'The admin data has been successfully retrieved',
                 'data' => $admin
-            ]);
+            ], 200);
         } else {
             $admin = json_decode($adminData, true);
             return response()->json([
@@ -214,6 +213,7 @@ class AdminApiController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Data successfully updated',
+                'data' => $admin,
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
@@ -245,14 +245,14 @@ class AdminApiController extends Controller
                 'success' => true,
                 'message' => 'Data successfully retrieved',
                 'data' => $category
-            ]);
+            ], 200);
         } else {
             $category = json_decode($categoryData);
             return response()->json([
                 'success' => true,
                 'message' => 'Data successfully retrieved (Redis)',
                 'data' => $category
-            ]);
+            ], 200);
         }
     }
 
@@ -284,7 +284,8 @@ class AdminApiController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'New category successfully added',
-            ], 200);
+                'data' => $category
+            ], 201);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -308,7 +309,6 @@ class AdminApiController extends Controller
                 ], 404);
             }
 
-            // Validasi input
             $validator = Validator::make($request->all(), [
                 'nama_kategori' => 'required|max:50',
             ], [
@@ -332,6 +332,7 @@ class AdminApiController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Category successfully edited',
+                'data' => $category
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
@@ -362,7 +363,8 @@ class AdminApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Category successfully deleted'
+                'message' => 'Category successfully deleted',
+                'data' => $category
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
@@ -389,27 +391,27 @@ class AdminApiController extends Controller
                         'message' => 'User not found'
                     ], 404);
                 }
-
+        
                 Redis::setex($key, 3600, json_encode($allUser));
                 return response()->json([
                     'success' => true,
                     'message' => 'Data successfully retrieved',
                     'data' => $allUser
-                ]);
+                ], 200);
             } else {
                 $allUser = json_decode($userData);
                 return response()->json([
                     'success' => true,
                     'message' => 'Data successfully retrieved (Redis)',
                     'data' => $allUser
-                ]);
+                ], 200);
             }
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve user data',
                 'error' => $e->getMessage()
-            ], 200);
+            ], 500);
         }
     }
 

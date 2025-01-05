@@ -33,7 +33,9 @@ class UserApiController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
+            return response()->json([
+                'errors' => $validator->errors()
+            ], 422);
         }
 
         $username = $request->input('username');
@@ -51,6 +53,7 @@ class UserApiController extends Controller
         }
 
         try {
+
             $redisKey = "user:token:$username";
             if (Redis::exists($redisKey)) {
                 $token = Redis::get($redisKey);
@@ -76,6 +79,7 @@ class UserApiController extends Controller
 
             $user = User::where('username', $username)->first();
             if (!$user || !Hash::check($credentials['password'], $user->password)) {
+
                 $attempts = Redis::incr($attemptKey);
                 Redis::expire($attemptKey, 3600);
 
@@ -187,7 +191,7 @@ class UserApiController extends Controller
                 'success' => true,
                 'message' => 'Registration successful',
                 'data' => $registrasi
-            ], 200);
+            ], 201);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -220,7 +224,7 @@ class UserApiController extends Controller
                 'success' => true,
                 'message' => 'The volunteer data has been successfully retrieved',
                 'data' => $user
-            ]);
+            ], 200);
         } else {
             $user = json_decode($userData, true);
             return response()->json([
@@ -295,7 +299,7 @@ class UserApiController extends Controller
                     'success' => false,
                     'message' => 'Validation failed',
                     'errors' => $validator->errors()
-                ], 400);
+                ], 422);
             }
 
             $user->username = $request->username ?? $user->username;
@@ -321,19 +325,22 @@ class UserApiController extends Controller
             $user->instagram = $request->instagram ?? $user->instagram;
             $user->linkedIn = $request->linkedIn ?? $user->linkedIn;
             
-            
+            // Hash password jika diubah
             if ($request->filled('password')) {
                 $user->password = Hash::make($request->password);
             }
 
+            // Upload CV
             if ($request->hasFile('cv')) {
                 $this->handleFileUpload($request->file('cv'), 'cv', $user, 'cv');
             }
 
+            // Upload foto profile
             if ($request->hasFile('foto_profile')) {
                 $this->handleFileUpload($request->file('foto_profile'), 'foto-profile', $user, 'foto_profile');
             }
 
+            // Simpan perubahan pada user
             $user->save();
 
             Redis::del("user:all", "user:profile:{$userId}", "admin:DetailUser:{$userId}");
@@ -396,7 +403,7 @@ class UserApiController extends Controller
                     'success' => false,
                     'message' => 'Validation failed',
                     'errors' => $validator->errors()
-                ], 400);
+                ], 422);
             }
 
             $apply = new Pendaftar;
@@ -433,7 +440,8 @@ class UserApiController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Registration was successful',
-            ], 200);
+                'data' => $apply
+            ], 201);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -476,7 +484,7 @@ class UserApiController extends Controller
                     'success' => false,
                     'message' => 'Validation failed',
                     'errors' => $validator->errors()
-                ], 400);
+                ], 422);
             }
             
             $skill = Skill::firstOrCreate(['nama_skill' => $request->input('nama_skill')]);
@@ -487,7 +495,8 @@ class UserApiController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Successfully added skill',
-            ], 200);
+                'data' => $skill,
+            ], 201);
 
         } catch (\Exception $e) {
             return response()->json([
@@ -535,7 +544,8 @@ class UserApiController extends Controller
             if ($otherUsers > 0) {
                 return response()->json([
                     'success' => true,
-                    'message' => 'Skill removed from this user'
+                    'message' => 'Skill removed from this user',
+                    'data' => $skill
                 ], 200);
             }
 
@@ -545,7 +555,8 @@ class UserApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Skill successfully removed'
+                'message' => 'Skill successfully removed',
+                'data' => $skill
             ], 200);
 
         } catch (\Exception $e) {
@@ -607,7 +618,7 @@ class UserApiController extends Controller
                     'success' => false,
                     'message' => 'Validation failed',
                     'errors' => $validator->errors()
-                ], 400);
+                ], 422);
             }
 
             $experience = new Experience;
@@ -626,7 +637,8 @@ class UserApiController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Experience successfully added',
-            ], 200);
+                'data' => $experience
+            ], 201);
 
         } catch (\Exception $e) {
             return response()->json ([
@@ -690,7 +702,7 @@ class UserApiController extends Controller
                     'success' => false,
                     'message' => 'Validasi gagal',
                     'errors' => $validator->errors()
-                ], 400);
+                ], 422);
             }
 
             $experience->id_user= $user->id;
@@ -708,7 +720,8 @@ class UserApiController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Experience successfully updated',
-            ], 201);
+                'data' => $experience
+            ], 200);
         } catch (\Exception $e) {
             return response()->json ([
                 'success' => false,
@@ -756,7 +769,8 @@ class UserApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Experience successfully removed'
+                'message' => 'Experience successfully removed',
+                'data' => $experience
             ], 200);
         } catch (\Exception $e) {
             return response()->json ([
@@ -843,7 +857,7 @@ class UserApiController extends Controller
                 'success' => true,
                 'message' => 'Successfully fetched activity details (Redis)',
                 'data' => $activity
-            ]);
+            ], 200);
         }
     }
     public function employers() 
@@ -874,7 +888,7 @@ class UserApiController extends Controller
                 'success' => true,
                 'message' => 'Successfully fetched all employers (Redis)',
                 'data' => $employers
-            ]);
+            ], 200);
         }
         
     }
@@ -909,14 +923,13 @@ class UserApiController extends Controller
                 'success' => true,
                 'message' => 'Successfully fetched employer details (Redis)',
                 'data' => $employer
-            ]);
+            ], 200);
         }
     }
 
     public function logout(Request $request)
     {
         try {
-            // Ambil token dari header
             $token = $request->bearerToken();
             if (!$token) {
                 return response()->json([
@@ -925,19 +938,15 @@ class UserApiController extends Controller
                 ], 400);
             }
 
-            // Ambil payload untuk mendapatkan username
             $payload = JWTAuth::setToken($token)->getPayload();
             $username = $payload->get('username');
 
-            // Tentukan Redis Key berdasarkan username
             $redisKey = "user:token:$username";
 
-            // Hapus token dari Redis
             if (Redis::exists($redisKey)) {
                 Redis::del($redisKey);
             }
 
-            // Blacklist token agar tidak bisa digunakan lagi
             JWTAuth::invalidate($token);
 
             return response()->json([

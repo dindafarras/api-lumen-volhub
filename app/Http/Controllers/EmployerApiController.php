@@ -1,9 +1,6 @@
 <?php
 namespace App\Http\Controllers;
 
-use Illuminate\Support\Facades\Auth;
-use App\Models\Admin;
-use App\Models\User;
 use App\Models\Mitra;
 use App\Models\Pendaftar;
 use App\Models\Kegiatan;
@@ -23,7 +20,6 @@ use Illuminate\Support\Facades\Redis;
 
 use Tymon\JWTAuth\Facades\JWTAuth;
 use Tymon\JWTAuth\Exceptions\JWTException;
-
 
 class EmployerApiController extends Controller
 {
@@ -191,7 +187,7 @@ class EmployerApiController extends Controller
                 'success' => true,
                 'message' => 'Registration successful',
                 'data'=>$registrasi
-            ], 200);
+            ], 201);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -224,7 +220,7 @@ class EmployerApiController extends Controller
                 'success' => true,
                 'message' => 'Employer data successfully retrieved',
                 'data' => $employer
-            ]);
+            ], 200);
         } else {
             $employer = json_decode($employerData, true);
             return response()->json([
@@ -290,7 +286,7 @@ class EmployerApiController extends Controller
                     'success' => false,
                     'message' => 'Validation failed',
                     'errors' => $validator->errors()
-                ], 400);
+                ], 422);
             }
 
             $employer->username = $request->username ?? $employer->username;
@@ -497,7 +493,7 @@ class EmployerApiController extends Controller
                     'success' => false,
                     'message' => 'Validation failed',
                     'errors' => $validator->errors()
-                ], 400);
+                ], 422);
             }
             
             $activity = new Kegiatan;
@@ -518,6 +514,7 @@ class EmployerApiController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'New activity has been successfully added',
+                'data' => $activity,
             ], 201);
         } catch (\Exception $e) {
             return response()->json([
@@ -582,7 +579,7 @@ class EmployerApiController extends Controller
                     'success' => false,
                     'message' => 'Validation failed',
                     'errors' => $validator->errors()
-                ], 400);
+                ], 422);
             }
 
             $activity->id_mitra = $employer->id_mitra;
@@ -602,7 +599,8 @@ class EmployerApiController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Activity successfully updated',
-            ], 201);
+                'data' => $activity
+            ], 200);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -649,6 +647,7 @@ class EmployerApiController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Activity successfully deleted',
+                'data' => $activity,
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
@@ -701,7 +700,7 @@ class EmployerApiController extends Controller
                     'success' => false,
                     'message' => 'Validation failed',
                     'errors' => $validator->errors()
-                ], 400);
+                ], 422);
             }
 
             $benefit = Benefit::firstOrCreate(['nama_benefit' => $request->input('nama_benefit')]);
@@ -714,6 +713,7 @@ class EmployerApiController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Benefit successfully added to this activity',
+                'data' => $benefit
             ], 201);
         } catch (\Exception $e) {
             return response()->json([
@@ -773,7 +773,8 @@ class EmployerApiController extends Controller
             if ($otherActivity > 0) {
                 return response()->json([
                     'success' => true,
-                    'message' => 'Benefit removed from this activity'
+                    'message' => 'Benefit removed from this activity',
+                    'data' => $benefit
                 ], 200);
             }
 
@@ -783,7 +784,8 @@ class EmployerApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Benefit successfully deleted'
+                'message' => 'Benefit successfully deleted',
+                'data' => $benefit
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
@@ -837,7 +839,7 @@ class EmployerApiController extends Controller
                     'success' => false,
                     'message' => 'Validation failed',
                     'errors' => $validator->errors()
-                ], 400);
+                ], 422);
             }
 
             $requirement = Kriteria::firstOrCreate(['nama_kriteria' => $request->input('nama_kriteria')]);
@@ -850,6 +852,7 @@ class EmployerApiController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Requirement successfully added to this activity',
+                'data' => $requirement
             ], 201);
         } catch (\Exception $e) {
             return response()->json([
@@ -909,7 +912,8 @@ class EmployerApiController extends Controller
             if ($otherActivity > 0) {
                 return response()->json([
                     'success' => true,
-                    'message' => 'Requirement removed from this activity'
+                    'message' => 'Requirement removed from this activity',
+                    'data' => $requirement
                 ], 200);
             }
 
@@ -919,7 +923,8 @@ class EmployerApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Requirement successfully deleted'
+                'message' => 'Requirement successfully deleted',
+                'data' => $requirement
             ], 200); 
         } catch (\Exception $e) {
             return response()->json([
@@ -974,7 +979,7 @@ class EmployerApiController extends Controller
                 'success' => true,
                 'message' => 'Successfully retrieved all applicants for this employer (Redis)',
                 'data' => $applicants
-            ]);
+            ], 200);
         }
     }
 
@@ -1107,7 +1112,7 @@ class EmployerApiController extends Controller
                     'success' => false,
                     'message' => 'Validation failed',
                     'errors' => $validator->errors()
-                ], 400);
+                ], 422);
             }
 
             $applicant->status_applicant = $request->status_applicant;
@@ -1223,7 +1228,7 @@ class EmployerApiController extends Controller
                     'success' => false,
                     'message' => 'Validation failed',
                     'errors' => $validator->errors()
-                ], 400);
+                ], 422);
             }
 
             $applicant->status_applicant = 'Interview';
@@ -1266,6 +1271,7 @@ class EmployerApiController extends Controller
     public function logout(Request $request)
     {
         try {
+            // Ambil token dari header Authorization
             $token = $request->bearerToken();
 
             if (!$token) {
@@ -1275,6 +1281,7 @@ class EmployerApiController extends Controller
                 ], 400);
             }
 
+            // Decode token untuk mendapatkan username
             $payload = JWTAuth::setToken($token)->getPayload();
             $username = $payload->get('username');
 
