@@ -24,7 +24,6 @@ use Tymon\JWTAuth\Exceptions\JWTException;
 class UserApiController extends Controller
 {
     //Login User
-
     public function loginUser(Request $request)
     {
         $validator = Validator::make($request->all(), [
