@@ -964,7 +964,7 @@ class EmployerApiController extends Controller
             $activities = Kegiatan::where('id_mitra', $employer->id_mitra)->pluck('id_kegiatan');
 
             $applicants = Pendaftar::whereIn('id_kegiatan', $activities)
-                                        ->select('id_user', 'id_kegiatan', 'status_applicant', 'tgl_pendaftaran')
+                                        ->select('id_pendaftar','id_user', 'id_kegiatan', 'status_applicant', 'tgl_pendaftaran')
                                         ->get();
 
             Redis::setex("$key", 3600, json_encode($applicants));

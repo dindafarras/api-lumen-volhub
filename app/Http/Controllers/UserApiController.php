@@ -434,7 +434,8 @@ class UserApiController extends Controller
 
             $apply->save();
 
-            Redis::del("mitra:pendaftar");
+            $employerId = $activity->id_mitra;
+            Redis::del("mitra:pendaftar", "employer:applicants:{$employerId}");
 
             return response()->json([
                 'success' => true,
